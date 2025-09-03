@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSV Mapper • Vanilla JS</title>
+  </head>
+  <body>
+    <form method="POST" id="form">
+      <input id="csv" type="file" accept=".csv">
+      <input id="map" type="hidden">
+      <div id="remapping-controls"></div>
+      <button type="submit">Submit</button>
+    </form>
+    <script type="module">
+      import CsvMapper from "./../dist/csv-mapper.esm.js";
+      const options = {
+        headers: true,
+        remap: true,
+        showUserControls: true,
+        columns: ['id', 'name', 'sku', 'qty']
+      };
+      const fileMap = new CsvMapper('#csv', options);
+
+      document.getElementById('form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log(e);
+      });
+    </script>
+  </body>
+</html>

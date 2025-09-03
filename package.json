@@ -1,0 +1,57 @@
+{
+  "name": "csv-mapper",
+  "version": "0.1.0",
+  "description": "Tiny, dependency-free CSV column mapper for the browser with optional UI, auto-mapping, transforms, and validation.",
+  "keywords": [
+    "csv",
+    "mapping",
+    "browser",
+    "vanilla-js",
+    "import",
+    "data"
+  ],
+  "license": "MIT",
+  "author": "Harry Mustoe-Playfair",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manticorp/csv-mapper.git"
+  },
+  "homepage": "https://github.com/manticorp/csv-mapper#readme",
+  "bugs": {
+    "url": "https://github.com/manticorp/csv-mapper/issues"
+  },
+
+  "main": "dist/csv-mapper.umd.js",
+  "module": "dist/csv-mapper.esm.js",
+  "browser": "dist/csv-mapper.umd.min.js",
+  "unpkg": "dist/csv-mapper.umd.min.js",
+  "jsdelivr": "dist/csv-mapper.umd.min.js",
+
+  "exports": {
+    ".": {
+      "import": "./dist/csv-mapper.esm.js",
+      "require": "./dist/csv-mapper.umd.js"
+    }
+  },
+
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+
+  "scripts": {
+    "dev": "rollup -cw",
+    "build": "rollup -c",
+    "prepublishOnly": "npm run build"
+  },
+
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "rollup": "^4.0.0"
+  }
+}

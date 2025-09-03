@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper Server Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005a8b;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #remapping-controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .hidden {
+            display: none;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>CSV Mapper Server Demo</h1>
+    <p>This demo shows how CSV Mapper works with server uploads. Upload a CSV file, map the columns using the UI, and see the server response.</p>
+
+    <div class="container">
+        <h2>Upload CSV File</h2>
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="csv">Select CSV File:</label>
+                <input id="csv" type="file" accept=".csv" required>
+                <input id="map" type="hidden">
+            </div>
+
+            <div id="remapping-controls" class="hidden">
+                <!-- CSV Mapper will populate this with mapping controls -->
+            </div>
+
+            <div class="form-group">
+                <button type="submit" id="submitBtn" disabled>Upload and Process</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="response" class="hidden"></div>
+
+    <div class="container">
+        <h3>Expected Columns</h3>
+        <p>This demo expects the following columns:</p>
+        <ul>
+            <li><strong>product_id</strong> - Unique product identifier</li>
+            <li><strong>name</strong> - Product name</li>
+            <li><strong>price</strong> - Product price</li>
+            <li><strong>category</strong> - Product category</li>
+            <li><strong>stock</strong> - Stock quantity</li>
+        </ul>
+        <p>Try uploading a CSV with different column names to see the mapping interface in action!</p>
+    </div>
+
+    <script type="module">
+        import CsvMapper from "/dist/csv-mapper.esm.js";
+
+        let csvMapper;
+        let remappedCsvContent = null;
+        const form = document.getElementById('uploadForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const responseDiv = document.getElementById('response');
+        const remappingControls = document.getElementById('remapping-controls');
+
+        // Initialize CSV Mapper
+        const options = {
+            columns: [
+                'product_id',
+                'name',
+                'price',
+                'category',
+                'stock'
+            ],
+            remap: true, // This will create a remapped CSV
+            showUserControls: true,
+            mappingInput: '#map',
+            controlsContainer: '#remapping-controls',
+            allowUnmappedTargets: false
+        };
+
+        csvMapper = new CsvMapper('#csv', options);
+
+        // Event listeners for CSV Mapper
+        csvMapper.addEventListener('beforeParse', (e) => {
+            console.log('CSV parsing started...');
+            showResponse('Parsing CSV...', 'info');
+            remappedCsvContent = null;
+        });
+
+        csvMapper.addEventListener('beforeMap', (e) => {
+            console.log('CSV parsed, showing mapping controls if needed');
+            remappingControls.classList.remove('hidden');
+            submitBtn.disabled = false;
+        });
+
+        csvMapper.addEventListener('afterMap', (e) => {
+            console.log('Mapping completed:', e.detail);
+            remappedCsvContent = e.detail.csv; // Store the remapped CSV
+
+            // Update the mapping input
+            const mappingInput = document.getElementById('map');
+            if (mappingInput) {
+                mappingInput.value = JSON.stringify(csvMapper.getMapping());
+            }
+
+            showResponse('Mapping completed. Ready to upload.', 'success');
+        });
+
+        // Handle form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const fileInput = document.getElementById('csv');
+            const mappingInput = document.getElementById('map');
+
+            if (!fileInput.files[0]) {
+                showResponse('Please select a CSV file', 'error');
+                return;
+            }
+
+            try {
+                submitBtn.disabled = true;
+                showResponse('Uploading...', 'info');
+
+                const formData = new FormData();
+
+                // If we have remapped content and remap is enabled, send the remapped CSV
+                if (remappedCsvContent && options.remap) {
+                    // Create a blob from the remapped CSV content
+                    const remappedBlob = new Blob([remappedCsvContent], { type: 'text/csv' });
+                    const remappedFile = new File([remappedBlob], 'remapped_' + fileInput.files[0].name, { type: 'text/csv' });
+                    formData.append('csv', remappedFile);
+
+                    console.log('Sending remapped CSV:', remappedCsvContent);
+                } else {
+                    // Send original file
+                    formData.append('csv', fileInput.files[0]);
+                }
+
+                if (mappingInput.value) {
+                    formData.append('mapping', mappingInput.value);
+                }
+
+                const response = await fetch('/upload-csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showResponse(JSON.stringify(result, null, 2), 'success');
+                } else {
+                    showResponse(`Error: ${result.error}`, 'error');
+                }
+
+            } catch (error) {
+                showResponse(`Upload failed: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showResponse(message, type = 'info') {
+            responseDiv.textContent = message;
+            responseDiv.className = type;
+            responseDiv.classList.remove('hidden');
+        }
+
+        // Enable submit button when file is selected
+        document.getElementById('csv').addEventListener('change', () => {
+            if (document.getElementById('csv').files[0]) {
+                // Button will be enabled after mapping is ready
+            }
+        });
+    </script>
+</body>
+</html>
