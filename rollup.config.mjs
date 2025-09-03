@@ -1,9 +1,10 @@
 // rollup.config.mjs
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+import typescript from '@rollup/plugin-typescript';
 import terser from '@rollup/plugin-terser';
 
-const input = 'src/csv-mapper.js';   // ESM source
+const input = 'src/csv-mapper.ts';   // TypeScript source
 const name = 'CsvMapper';            // global for UMD builds
 
 export default [
@@ -17,6 +18,12 @@ export default [
     plugins: [
       nodeResolve(),
       commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        declaration: true,
+        declarationDir: './dist',
+        rootDir: './src'
+      }),
     ],
   },
 
@@ -30,6 +37,11 @@ export default [
     plugins: [
       nodeResolve(),
       commonjs(),
+      typescript({
+        tsconfig: './tsconfig.json',
+        declaration: false, // Don't generate declarations for minified builds
+        declarationMap: false // Don't generate declaration maps for minified builds
+      }),
       terser(),
     ],
   },

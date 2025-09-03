@@ -129,7 +129,11 @@
         // Initialize CSV Mapper
         const options = {
             columns: [
-                'product_id',
+                {
+                    name: 'product_id',
+                    title: 'product_id',
+                    required: true,
+                },
                 'name',
                 'price',
                 'category',
@@ -144,6 +148,26 @@
 
         csvMapper = new CsvMapper('#csv', options);
 
+        const validateForm = (event) => {
+            const { isValid, missingRequired } = event.detail;
+            const submitBtn = document.querySelector('button[type="submit"]');
+
+            if (isValid) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit (Ready!)';
+                submitBtn.style.backgroundColor = '';
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.textContent = `Cannot Submit - Missing: ${missingRequired.join(', ')}`;
+                submitBtn.style.backgroundColor = '#ff6b6b';
+            }
+        };
+
+        // Listen for validation changes
+        csvMapper.addEventListener('validationChange', (event) => {
+            validateForm(event);
+        });
+    
         // Event listeners for CSV Mapper
         csvMapper.addEventListener('beforeParse', (e) => {
             console.log('CSV parsing started...');

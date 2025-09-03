@@ -18,14 +18,104 @@
  *   });
  */
 
+// Type definitions
+export interface CsvDialect {
+  separator: string;
+  enclosure: string;
+  escape: string | null;
+}
+
+export interface ColumnSpec {
+  name: string;
+  title?: string;
+  required?: boolean;
+  allowDuplicates?: boolean;
+  match?: RegExp | ((header: string) => boolean);
+  transform?: (value: any, row: Record<string, any>) => any;
+  validate?: RegExp | ((value: any) => boolean) | ValidationRule;
+  validationMessage?: string;
+}
+
+export interface ValidationRule {
+  type: 'number' | 'boolean';
+  min?: number;
+  max?: number;
+}
+
+export interface CsvMapperOptions {
+  separator?: string;
+  enclosure?: string;
+  escape?: string;
+  guessMaxLines?: number;
+  outputSeparator?: string | null;
+  outputEnclosure?: string | null;
+  outputEscape?: string | null;
+  headers?: boolean;
+  remap?: boolean;
+  showUserControls?: boolean;
+  mappingInput?: HTMLElement | string | null;
+  controlsContainer?: HTMLElement | string | null;
+  columns?: (string | ColumnSpec)[];
+  autoThreshold?: number;
+  allowUnmappedTargets?: boolean;
+  beforeParse?: ((text: string) => string | void) | null;
+  beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
+  afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
+}
+
+export interface ParseOptions {
+  headers?: boolean;
+  separator?: string;
+  enclosure?: string;
+  escape?: string;
+  guessMaxLines?: number;
+}
+
+export interface ParseResult {
+  headers: string[];
+  rows: Record<string, any>[];
+  dialect: CsvDialect;
+}
+
+export interface DetectDialectOptions {
+  separator?: string | null | undefined;
+  enclosure?: string | null | undefined;
+  escape?: string | null | undefined;
+  guessMaxLines?: number;
+}
+
+export interface MappedOutput {
+  mappedRows: MappedRow[];
+  csv: string | null;
+}
+
+export interface MappedRow extends Record<string, any> {
+  __errors__?: ValidationError[];
+}
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  value: any;
+}
+
 export default class CsvMapper extends EventTarget {
+  public input: HTMLInputElement;
+  public opts: CsvMapperOptions;
+  public columns: ColumnSpec[];
+  public controlsEl: HTMLElement | null;
+  public mapping: Record<string, string>;
+  public headers: string[];
+  public rows: MappedRow[];
+  public dialect: CsvDialect;
+
   /**
-   * @param {string|HTMLInputElement} fileInput selector or element for <input type=file>
-   * @param {object} options
+   * @param fileInput selector or element for <input type=file>
+   * @param options configuration options
    */
-  constructor(fileInput, options={}){
+  constructor(fileInput: HTMLInputElement | string, options: CsvMapperOptions = {}) {
     super();
-    this.input = typeof fileInput === 'string' ? document.querySelector(fileInput) : fileInput;
+    this.input = typeof fileInput === 'string' ? document.querySelector(fileInput) as HTMLInputElement : fileInput;
     if (!(this.input instanceof HTMLInputElement) || this.input.type !== 'file') {
       throw new Error('CsvMapper: first argument must be a file input or selector.');
     }
@@ -58,7 +148,7 @@ export default class CsvMapper extends EventTarget {
     this.columns = (this.opts.columns || []).map(c => typeof c === 'string' ? { name:c } : Object.assign({}, c));
     this.columns.forEach(c => { if (!c.title) c.title = c.name; });
 
-    this.controlsEl = this._resolveNode(this.opts.controlsContainer) || this._autoinsertContainer();
+    this.controlsEl = this._resolveNode(this.opts.controlsContainer || null) || this._autoinsertContainer();
     this.mapping = {};   // sourceHeader -> targetName
     this.headers = [];
     this.rows = [];
@@ -77,10 +167,25 @@ export default class CsvMapper extends EventTarget {
 
   // ===== Public API =====
   getMapping(){ return Object.assign({}, this.mapping); }
-  setMapping(map){ this.mapping = Object.assign({}, map||{}); if (this.opts.showUserControls) this._renderControls(); }
+  setMapping(map: Record<string, string> | null): void { 
+    this.mapping = Object.assign({}, map||{}); 
+    if (this.opts.showUserControls) this._renderControls(); 
+  }
   getHeaders(){ return [...this.headers]; }
   getRawRows(){ return this.rows.map(r=>Object.assign({}, r)); }
   getDialect(){ return Object.assign({}, this.dialect); }
+
+  /**
+   * Checks if all required columns are mapped
+   * @returns Object with validation status and missing required columns
+   */
+  validateMapping(): { isValid: boolean; missingRequired: string[] } {
+    const missingRequired = this._validateRequiredColumns();
+    return {
+      isValid: missingRequired.length === 0,
+      missingRequired
+    };
+  }
 
   async _onFileChange(){
     const file = this.input.files && this.input.files[0];
@@ -116,22 +221,53 @@ export default class CsvMapper extends EventTarget {
       if (Array.isArray(maybe)) this.rows = maybe;
     }
 
-    const { mappedRows, csv } = this._produceOutput();
-
-    const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
-    this.dispatchEvent(amEvent);
-    if (typeof this.opts.afterMap === 'function') {
-      this.opts.afterMap(mappedRows, csv);
+    // Only try to produce output if all required columns are mapped, or if there are no required columns
+    const validation = this.validateMapping();
+    if (validation.isValid || !this.columns.some(c => c.required)) {
+      try {
+        const { mappedRows, csv } = this._produceOutput();
+        const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
+        this.dispatchEvent(amEvent);
+        if (typeof this.opts.afterMap === 'function') {
+          this.opts.afterMap(mappedRows, csv);
+        }
+      } catch (error) {
+        // If validation fails during initial load, just skip the afterMap event
+        console.warn('Initial mapping validation failed:', error);
+      }
     }
 
-    const mappingInput = this._resolveNode(this.opts.mappingInput);
+    const mappingInput = this._resolveNode(this.opts.mappingInput || null);
     if (mappingInput instanceof HTMLInputElement) {
       mappingInput.value = JSON.stringify(this.mapping);
     }
   }
 
-  _produceOutput(){
-    const targetToSource = {};
+  /**
+   * Validates that all required columns are mapped
+   * @returns Array of missing required column names
+   */
+  _validateRequiredColumns(): string[] {
+    const missingRequired: string[] = [];
+    const mappedTargets = new Set(Object.values(this.mapping).filter(Boolean));
+    
+    for (const spec of this.columns) {
+      if (spec.required && !mappedTargets.has(spec.name)) {
+        missingRequired.push(spec.name);
+      }
+    }
+    
+    return missingRequired;
+  }
+
+  _produceOutput(): MappedOutput {
+    // Check for missing required columns first
+    const missingRequired = this._validateRequiredColumns();
+    if (missingRequired.length > 0) {
+      throw new Error(`Required columns are not mapped: ${missingRequired.join(', ')}`);
+    }
+
+    const targetToSource: Record<string, string[]> = {};
     for (const [src, tgt] of Object.entries(this.mapping)) {
       if (!tgt) continue;
       const spec = this.columns.find(c=>c.name===tgt);
@@ -140,8 +276,36 @@ export default class CsvMapper extends EventTarget {
       (targetToSource[tgt] ||= []).push(src);
     }
 
-    const mappedRows = this.rows.map((row) => {
-      const out = {};
+    // If no columns are mapped and there are no required columns, return empty rows
+    const hasMappings = Object.values(this.mapping).some(Boolean);
+    if (!hasMappings && !this.columns.some(c => c.required)) {
+      const emptyRows: MappedRow[] = this.rows.map(() => {
+        const out: MappedRow = {};
+        for (const spec of this.columns) {
+          out[spec.name] = '';
+        }
+        return out;
+      });
+      
+      let csv = null;
+      if (this.opts.remap) {
+        const outSep = this.opts.outputSeparator ?? this.dialect.separator ?? ',';
+        const outQuote = this.opts.outputEnclosure ?? this.dialect.enclosure ?? '"';
+        const outEsc = this.opts.outputEscape ?? this.dialect.escape ?? null;
+        const headerRow = this.columns.map(c => c.title || c.name);
+        const lines = [CsvMapper.toCsvRow(headerRow, outSep, outQuote, outEsc)];
+        for (const r of emptyRows) {
+          const arr = this.columns.map(c => '');
+          lines.push(CsvMapper.toCsvRow(arr, outSep, outQuote, outEsc));
+        }
+        csv = lines.join('\n');
+      }
+      
+      return { mappedRows: emptyRows, csv };
+    }
+
+    const mappedRows: MappedRow[] = this.rows.map((row) => {
+      const out: MappedRow = {};
       for (const spec of this.columns) {
         const srcHeaders = targetToSource[spec.name] || [];
         let raw = '';
@@ -184,7 +348,7 @@ export default class CsvMapper extends EventTarget {
     const el = this.controlsEl; if (!el) return;
     if (!this.headers.length) { el.innerHTML = this._banner('No CSV loaded. Choose a file to begin.'); return; }
 
-    const selectOptions = (currentTargetName)=>{
+    const selectOptions = (currentTargetName: string): string => {
       const taken = new Map();
       Object.values(this.mapping).forEach(n => { if (!n) return; taken.set(n, (taken.get(n)||0)+1); });
       return ['<option value="">— Ignore —</option>']
@@ -194,7 +358,9 @@ export default class CsvMapper extends EventTarget {
           const disabled = !dupAllowed && spec.name !== currentTargetName && count > 0 ? 'disabled' : '';
           const sel = currentTargetName === spec.name ? 'selected' : '';
           const title = CsvMapper.escape(spec.title || spec.name);
-          return `<option value="${CsvMapper.escape(spec.name)}" ${sel} ${disabled}>${title}${spec.allowDuplicates?' (multi)':''}</option>`;
+          const requiredMark = spec.required ? ' *' : '';
+          const dupMark = spec.allowDuplicates ? ' (multi)' : '';
+          return `<option value="${CsvMapper.escape(spec.name)}" ${sel} ${disabled}>${title}${requiredMark}${dupMark}</option>`;
         })).join('');
     };
 
@@ -206,6 +372,14 @@ export default class CsvMapper extends EventTarget {
       </tr>`;
     }).join('');
 
+    // Check validation status for required columns
+    const validation = this.validateMapping();
+    const validationHtml = validation.missingRequired.length > 0 
+      ? `<div class="csvm-validation-error">
+           <strong>⚠ Required columns not mapped:</strong> ${validation.missingRequired.join(', ')}
+         </div>`
+      : `<div class="csvm-validation-success">✓ All required columns are mapped</div>`;
+
     el.innerHTML = `
       <div class="csvm-card">
         <div class="csvm-card-h">Map your columns <span class="csvm-tag">${this.rows.length} rows • sep: ${CsvMapper.escape(this.dialect.separator || ',')}</span></div>
@@ -214,25 +388,44 @@ export default class CsvMapper extends EventTarget {
             <thead><tr><th>Your CSV header</th><th>Map to</th></tr></thead>
             <tbody>${bodyRows}</tbody>
           </table>
+          ${this.columns.some(c => c.required) ? validationHtml : ''}
         </div>
       </div>`;
 
     el.querySelectorAll('select[data-src]').forEach(sel => {
       sel.addEventListener('change', () => {
-        const src = sel.getAttribute('data-src');
-        this.mapping[src] = sel.value;
+        const selectEl = sel as HTMLSelectElement;
+        const src = selectEl.getAttribute('data-src');
+        if (src) {
+          this.mapping[src] = selectEl.value;
+        }
         this._renderControls();
         
-        // Trigger afterMap event when mapping changes
-        const { mappedRows, csv } = this._produceOutput();
-        const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
-        this.dispatchEvent(amEvent);
-        if (typeof this.opts.afterMap === 'function') {
-          this.opts.afterMap(mappedRows, csv);
+        // Trigger validation event
+        const validation = this.validateMapping();
+        const validationEvent = new CustomEvent('validationChange', { 
+          detail: { 
+            isValid: validation.isValid, 
+            missingRequired: validation.missingRequired 
+          } 
+        });
+        this.dispatchEvent(validationEvent);
+        
+        // Trigger afterMap event when mapping changes (only if valid or no required columns)
+        try {
+          const { mappedRows, csv } = this._produceOutput();
+          const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
+          this.dispatchEvent(amEvent);
+          
+          if (typeof this.opts.afterMap === 'function') {
+            this.opts.afterMap(mappedRows, csv);
+          }
+        } catch (error) {
+          // If validation fails, just dispatch the validation event above
         }
 
         // Update mapping input
-        const mappingInput = this._resolveNode(this.opts.mappingInput);
+        const mappingInput = this._resolveNode(this.opts.mappingInput || null);
         if (mappingInput instanceof HTMLInputElement) {
           mappingInput.value = JSON.stringify(this.mapping);
         }
@@ -240,7 +433,7 @@ export default class CsvMapper extends EventTarget {
     });
   }
 
-  _banner(text){ return `<div class="csvm-note">${CsvMapper.escape(text)}</div>`; }
+  _banner(text: string): string { return `<div class="csvm-note">${CsvMapper.escape(text)}</div>`; }
 
   // ===== Auto mapping =====
   _autoMap(){
@@ -254,14 +447,14 @@ export default class CsvMapper extends EventTarget {
         const s = this._matchScore(src, spec);
         if (s > score) { score = s; best = spec.name; }
       }
-      if (score >= this.opts.autoThreshold) {
+      if (score >= this.opts.autoThreshold!) {
         this.mapping[src] = best;
         used.set(best, (used.get(best)||0)+1);
       }
     }
   }
 
-  _matchScore(srcHeader, spec){
+  _matchScore(srcHeader: string, spec: ColumnSpec): number {
     const norm = CsvMapper.normalize(srcHeader);
     const title = CsvMapper.normalize(spec.title||'');
     const name  = CsvMapper.normalize(spec.name||'');
@@ -279,18 +472,22 @@ export default class CsvMapper extends EventTarget {
   }
 
   // ===== Helpers =====
-  _resolveNode(ref){ if (!ref) return null; if (typeof ref === 'string') return document.querySelector(ref); return ref; }
+  _resolveNode(ref: HTMLElement | string | null): HTMLElement | null { 
+    if (!ref) return null; 
+    if (typeof ref === 'string') return document.querySelector(ref); 
+    return ref; 
+  }
   _autoinsertContainer(){ if (!this.opts.showUserControls) return null; const d=document.createElement('div'); d.dataset.csvMapperAutocreated='1'; this.input.insertAdjacentElement('afterend', d); return d; }
 
   // ---------- CSV core ----------
-  static parseCSV(text, { headers=true, separator='', enclosure='', escape='', guessMaxLines=25 }={}){
+  static parseCSV(text: string, { headers=true, separator='', enclosure='', escape='', guessMaxLines=25 }: ParseOptions = {}): ParseResult {
     const needSep = !separator;
     const needQuote = !enclosure;
     const needEsc = escape === '' || escape == null;
     const dialect = CsvMapper.detectDialect(text, {
-      separator: needSep ? null : separator,
-      enclosure: needQuote ? null : enclosure,
-      escape: needEsc ? null : escape,
+      separator: needSep ? undefined : separator,
+      enclosure: needQuote ? undefined : enclosure,
+      escape: needEsc ? undefined : escape,
       guessMaxLines
     });
     const sep = dialect.separator || ',';
@@ -310,7 +507,7 @@ export default class CsvMapper extends EventTarget {
     return { headers: head, rows: objs, dialect };
   }
 
-  static _parseWithDialect(text, sep, quote, esc){
+  static _parseWithDialect(text: string, sep: string, quote: string, esc: string | null): string[][] {
     const rows = [];
     let i=0, f='', r=[], inQuotes=false;
     while (i < text.length) {
@@ -336,15 +533,15 @@ export default class CsvMapper extends EventTarget {
     return rows;
   }
 
-  static detectDialect(text, { separator=null, enclosure=null, escape=null, guessMaxLines=25 }={}){
+  static detectDialect(text: string, { separator=null, enclosure=null, escape=null, guessMaxLines=25 }: DetectDialectOptions = {}): CsvDialect {
     const seps = separator ? [separator] : [',',';','\t','|',':'];
     const quotes = enclosure ? [enclosure] : ['"', "'"];
     const escapes = escape != null ? [escape] : [null, '\\'];
 
-    const lines = text.split(/\r\n|\n|\r/).filter(l=>l.length>0).slice(0, guessMaxLines);
+    const lines = text.split(/\r\n|\n|\r/).filter((l: string) => l.length > 0).slice(0, guessMaxLines);
     if (lines.length === 0) return { separator: ',', enclosure: '"', escape: null };
 
-    let best = { score: -Infinity, sep: ',', quote: '"', esc: null };
+    let best: { score: number; sep: string; quote: string; esc: string | null } = { score: -Infinity, sep: ',', quote: '"', esc: null };
 
     for (const s of seps) {
       const sep = s === '\t' ? '\t' : s;
@@ -353,12 +550,12 @@ export default class CsvMapper extends EventTarget {
           try {
             const sampleRows = CsvMapper._parseWithDialect(lines.join('\n'), sep, q, e);
             const counts = sampleRows.map(r=>r.length);
-            const mode = CsvMapper._mode(counts);
-            const consistent = counts.filter(c=>c===mode).length;
+            const mode = CsvMapper._mode(counts) || 0;
+            const consistent = counts.filter(c => c === mode).length;
             const penalty = mode <= 1 ? 50 : 0;
-            const sepHits = (lines[0].match(new RegExp(CsvMapper._escRe(sep), 'g'))||[]).length;
-            const score = consistent*100 + mode*5 + sepHits - penalty;
-            if (score > best.score) best = { score, sep, quote:q, esc:e };
+            const sepHits = (lines[0].match(new RegExp(CsvMapper._escRe(sep), 'g')) || []).length;
+            const score = consistent * 100 + mode * 5 + sepHits - penalty;
+            if (score > best.score) best = { score, sep, quote: q, esc: e };
           } catch(err){ /* ignore */ }
         }
       }
@@ -366,11 +563,23 @@ export default class CsvMapper extends EventTarget {
     return { separator: best.sep, enclosure: best.quote, escape: best.esc };
   }
 
-  static _mode(arr){ const m=new Map(); let best=null,bestC=-1; for(const v of arr){const c=(m.get(v)||0)+1; m.set(v,c); if(c>bestC){best=v;bestC=c;}} return best; }
-  static _escRe(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, r=>`\\${r}`); }
+  static _mode(arr: number[]): number | null { 
+    const m = new Map(); 
+    let best = null, bestC = -1; 
+    for (const v of arr) { 
+      const c = (m.get(v) || 0) + 1; 
+      m.set(v, c); 
+      if (c > bestC) { 
+        best = v; 
+        bestC = c; 
+      } 
+    } 
+    return best; 
+  }
+  static _escRe(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, (r: string) => `\\${r}`); }
 
-  static toCsvRow(arr, sep=',', quote='"', esc=null){
-    return arr.map(v=>{
+  static toCsvRow(arr: any[], sep: string = ',', quote: string = '"', esc: string | null = null): string {
+    return arr.map((v: any) => {
       let s = String(v ?? '');
       const needsQuote = s.includes(sep) || s.includes('\n') || s.includes('\r') || s.includes(quote);
       if (esc) s = s.split(quote).join(esc + quote); else s = s.split(quote).join(quote + quote);
@@ -378,16 +587,16 @@ export default class CsvMapper extends EventTarget {
     }).join(sep);
   }
 
-  static normalize(s){ return String(s||'').toLowerCase().replace(/[_\-]/g,' ').replace(/\s+/g,' ').trim(); }
-  static similarity(a,b){
+  static normalize(s: any): string { return String(s || '').toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim(); }
+  static similarity(a: string, b: string): number {
     a = CsvMapper.normalize(a); b = CsvMapper.normalize(b);
     if (!a || !b) return 0; if (a===b) return 1;
-    const grams = str => { const m=new Map(); for(let i=0;i<str.length-1;i++){const g=str.slice(i,i+2); m.set(g,(m.get(g)||0)+1);} return m; };
+    const grams = (str: string) => { const m = new Map(); for (let i = 0; i < str.length - 1; i++) { const g = str.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
     const A=grams(a), B=grams(b);
     let inter=0, total=0; for (const [g,c] of A){ if (B.has(g)) inter+=Math.min(c,B.get(g)); total+=c; } for (const [,c] of B) total+=c; return (2*inter)/(total||1);
   }
 
-  static _validate(v, validator){
+  static _validate(v: any, validator: RegExp | ((value: any) => boolean) | ValidationRule): boolean {
     if (validator instanceof RegExp) return validator.test(String(v));
     if (typeof validator === 'function') return !!validator(v);
     if (validator && typeof validator === 'object'){
@@ -419,9 +628,13 @@ export default class CsvMapper extends EventTarget {
       .csvm-table th{color:#a8b4dc}
       .csvm-note{margin-top:8px; color:#a8b4dc}
       .csvm-card select{background:#0b1026; color:#e7ecff; border:1px solid rgba(255,255,255,.18); border-radius:8px; padding:6px 8px}
+      .csvm-validation-error{margin-top:12px; padding:8px 12px; background:rgba(255,99,99,.1); border:1px solid rgba(255,99,99,.3); border-radius:8px; color:#ff9999; font:13px/1.4 system-ui}
+      .csvm-validation-success{margin-top:12px; padding:8px 12px; background:rgba(99,255,99,.1); border:1px solid rgba(99,255,99,.3); border-radius:8px; color:#99ff99; font:13px/1.4 system-ui}
     `;
     const style = document.createElement('style'); style.id = 'csvm-style'; style.textContent = css; document.head.appendChild(style);
   }
 
-  static escape(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+  static escape(s: any): string { 
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c] || c)); 
+  }
 }

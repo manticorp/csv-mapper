@@ -20,20 +20,18 @@
   "bugs": {
     "url": "https://github.com/manticorp/csv-mapper/issues"
   },
-
   "main": "dist/csv-mapper.umd.js",
   "module": "dist/csv-mapper.esm.js",
+  "types": "dist/csv-mapper.d.ts",
   "browser": "dist/csv-mapper.umd.min.js",
   "unpkg": "dist/csv-mapper.umd.min.js",
   "jsdelivr": "dist/csv-mapper.umd.min.js",
-
   "exports": {
     ".": {
       "import": "./dist/csv-mapper.esm.js",
       "require": "./dist/csv-mapper.umd.js"
     }
   },
-
   "sideEffects": false,
   "files": [
     "dist",
@@ -41,17 +39,19 @@
     "README.md",
     "LICENSE"
   ],
-
   "scripts": {
     "dev": "rollup -cw",
     "build": "rollup -c",
+    "type-check": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
-
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-terser": "^0.4.0",
-    "rollup": "^4.0.0"
+    "@rollup/plugin-typescript": "^12.1.4",
+    "rollup": "^4.0.0",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.2"
   }
 }
