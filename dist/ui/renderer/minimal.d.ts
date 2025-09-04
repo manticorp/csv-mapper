@@ -1,4 +1,4 @@
-import { UIRenderer, UIRenderOptions, ValidationResult } from '../../types.js';
+import { UIRenderer, UIRenderOptions, ValidationResult } from './../../types.js';
 /**
  * Minimal UI renderer with a simpler, more compact interface
  * Good example of how to create alternative renderers

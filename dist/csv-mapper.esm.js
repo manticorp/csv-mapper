@@ -366,18 +366,86 @@ class MinimalUIRenderer {
         const style = document.createElement('style');
         style.id = id;
         style.textContent = `
-      .minimal-mapper { border: 1px solid #ccc; border-radius: 6px; padding: 12px; font-family: -apple-system, sans-serif; }
-      .minimal-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+      /* Light theme (default) */
+      .minimal-mapper { 
+        border: 1px solid #ccc; 
+        border-radius: 6px; 
+        padding: 12px; 
+        font-family: -apple-system, sans-serif; 
+        background: #ffffff;
+      }
+      .minimal-header { 
+        display: flex; 
+        align-items: center; 
+        gap: 8px; 
+        margin-bottom: 12px; 
+        padding-bottom: 8px; 
+        border-bottom: 1px solid #eee; 
+      }
       .minimal-title { font-weight: 600; color: #333; }
       .minimal-info { font-size: 0.9em; color: #666; }
-      .minimal-validation-badge { padding: 2px 6px; border-radius: 12px; font-size: 0.8em; font-weight: 500; }
+      .minimal-validation-badge { 
+        padding: 2px 6px; 
+        border-radius: 12px; 
+        font-size: 0.8em; 
+        font-weight: 500; 
+      }
       .minimal-validation-badge.valid { background: #d4edda; color: #155724; }
       .minimal-validation-badge.invalid { background: #f8d7da; color: #721c24; }
       .minimal-mappings { display: grid; gap: 6px; }
-      .minimal-mapping-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; }
+      .minimal-mapping-row { 
+        display: grid; 
+        grid-template-columns: 1fr 1fr; 
+        gap: 8px; 
+        align-items: center; 
+      }
       .minimal-source { font-weight: 500; color: #333; font-size: 0.9em; }
-      .minimal-select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; }
-      .minimal-note { padding: 8px; color: #666; text-align: center; font-style: italic; }
+      .minimal-select { 
+        padding: 4px 6px; 
+        border: 1px solid #ccc; 
+        border-radius: 3px; 
+        font-size: 0.9em; 
+        background: #ffffff;
+        color: #333;
+      }
+      .minimal-note { 
+        padding: 8px; 
+        color: #666; 
+        text-align: center; 
+        font-style: italic; 
+      }
+
+      /* Dark theme */
+      @media (prefers-color-scheme: dark) {
+        .minimal-mapper { 
+          border: 1px solid #555; 
+          background: #1e1e1e;
+        }
+        .minimal-header { 
+          border-bottom: 1px solid #444; 
+        }
+        .minimal-title { color: #e0e0e0; }
+        .minimal-info { color: #a0a0a0; }
+        .minimal-validation-badge.valid { 
+          background: #1e3a1e; 
+          color: #4caf50; 
+        }
+        .minimal-validation-badge.invalid { 
+          background: #3a1e1e; 
+          color: #f44336; 
+        }
+        .minimal-source { color: #e0e0e0; }
+        .minimal-select { 
+          border: 1px solid #555; 
+          background: #2d2d2d;
+          color: #e0e0e0;
+        }
+        .minimal-select:focus {
+          border-color: #007cba;
+          outline: none;
+        }
+        .minimal-note { color: #a0a0a0; }
+      }
     `;
         document.head.appendChild(style);
     }
