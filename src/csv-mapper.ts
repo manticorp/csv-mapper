@@ -58,6 +58,7 @@ export interface CsvMapperOptions {
   columns?: (string | ColumnSpec)[];
   autoThreshold?: number;
   allowUnmappedTargets?: boolean;
+  setInputValidity?: boolean;
   beforeParse?: ((text: string) => string | void) | null;
   beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
   afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
@@ -140,6 +141,7 @@ export default class CsvMapper extends EventTarget {
       columns: [],                  // canonical column spec
       autoThreshold: 0.8,
       allowUnmappedTargets: true,
+      setInputValidity: false,      // Whether to use setCustomValidity on the file input
       beforeParse: null,
       beforeMap: null,
       afterMap: null,
@@ -170,10 +172,41 @@ export default class CsvMapper extends EventTarget {
   setMapping(map: Record<string, string> | null): void { 
     this.mapping = Object.assign({}, map||{}); 
     if (this.opts.showUserControls) this._renderControls(); 
+    this._validateMapping();
   }
   getHeaders(){ return [...this.headers]; }
   getRawRows(){ return this.rows.map(r=>Object.assign({}, r)); }
   getDialect(){ return Object.assign({}, this.dialect); }
+
+  _validateMapping(): { isValid: boolean; missingRequired: string[] } {
+    const requiredColumns = this.columns.filter(c => c.required === true);
+    const mappedTargets = new Set(Object.values(this.mapping).filter(v => v));
+    const missingRequired = requiredColumns.filter(col => !mappedTargets.has(col.name));
+    const isValid = missingRequired.length === 0;
+
+    // Fire validation event
+    const validationEvent = new CustomEvent('validationChange', { 
+      detail: { 
+        isValid, 
+        missingRequired: missingRequired.map(c => c.title || c.name),
+        mappedColumns: Array.from(mappedTargets)
+      } 
+    });
+    this.dispatchEvent(validationEvent);
+
+    // Set input validity if enabled
+    if (this.opts.setInputValidity) {
+      if (isValid) {
+        this.input.setCustomValidity('');
+      } else {
+        const message = `Missing required columns: ${missingRequired.map(c => c.title || c.name).join(', ')}`;
+        this.input.setCustomValidity(message);
+      }
+      this.input.reportValidity();
+    }
+
+    return { isValid, missingRequired: missingRequired.map(c => c.title || c.name) };
+  }
 
   /**
    * Checks if all required columns are mapped
@@ -236,6 +269,9 @@ export default class CsvMapper extends EventTarget {
         console.warn('Initial mapping validation failed:', error);
       }
     }
+
+    // Validate mapping after initial processing (this fires the validationChange event)
+    this._validateMapping();
 
     const mappingInput = this._resolveNode(this.opts.mappingInput || null);
     if (mappingInput instanceof HTMLInputElement) {
@@ -402,14 +438,7 @@ export default class CsvMapper extends EventTarget {
         this._renderControls();
         
         // Trigger validation event
-        const validation = this.validateMapping();
-        const validationEvent = new CustomEvent('validationChange', { 
-          detail: { 
-            isValid: validation.isValid, 
-            missingRequired: validation.missingRequired 
-          } 
-        });
-        this.dispatchEvent(validationEvent);
+        this._validateMapping();
         
         // Trigger afterMap event when mapping changes (only if valid or no required columns)
         try {

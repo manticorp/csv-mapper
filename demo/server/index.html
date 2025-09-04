@@ -143,7 +143,8 @@
             showUserControls: true,
             mappingInput: '#map',
             controlsContainer: '#remapping-controls',
-            allowUnmappedTargets: false
+            allowUnmappedTargets: false,
+            setInputValidity: true // Enable form validation with setCustomValidity
         };
 
         csvMapper = new CsvMapper('#csv', options);
@@ -165,9 +166,9 @@
 
         // Listen for validation changes
         csvMapper.addEventListener('validationChange', (event) => {
-            validateForm(event);
+            // validateForm(event);
         });
-    
+
         // Event listeners for CSV Mapper
         csvMapper.addEventListener('beforeParse', (e) => {
             console.log('CSV parsing started...');

@@ -34,6 +34,7 @@ export interface CsvMapperOptions {
     columns?: (string | ColumnSpec)[];
     autoThreshold?: number;
     allowUnmappedTargets?: boolean;
+    setInputValidity?: boolean;
     beforeParse?: ((text: string) => string | void) | null;
     beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
     afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
@@ -88,6 +89,10 @@ export default class CsvMapper extends EventTarget {
     getHeaders(): string[];
     getRawRows(): MappedRow[];
     getDialect(): CsvDialect;
+    _validateMapping(): {
+        isValid: boolean;
+        missingRequired: string[];
+    };
     /**
      * Checks if all required columns are mapped
      * @returns Object with validation status and missing required columns
