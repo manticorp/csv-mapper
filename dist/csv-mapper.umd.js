@@ -1,8 +1,393 @@
 (function (global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-    typeof define === 'function' && define.amd ? define(factory) :
-    (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.CsvMapper = factory());
-})(this, (function () { 'use strict';
+    typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+    typeof define === 'function' && define.amd ? define(['exports'], factory) :
+    (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.CsvMapper = {}));
+})(this, (function (exports) { 'use strict';
+
+    /**
+     * Default HTML-based UI renderer for CSV Mapper
+     * Provides the classic dropdown-based mapping interface
+     */
+    class DefaultUIRenderer {
+        constructor() {
+            this.container = null;
+            this.mappingChangeCallback = null;
+            this.currentOptions = null;
+            // Ensure CSS is loaded
+            DefaultUIRenderer._ensureStyles();
+        }
+        render(container, options) {
+            this.container = container;
+            this.currentOptions = options;
+            if (!options.headers.length) {
+                container.innerHTML = this._banner('No CSV loaded. Choose a file to begin.');
+                return;
+            }
+            const validationDisplay = this._renderValidationStatus(options.validation);
+            const mappingTable = this._renderMappingTable(options);
+            container.innerHTML = `
+      ${validationDisplay}
+      <div class="csvm-card">
+        <div class="csvm-card-h">
+          Map your columns 
+          <span class="csvm-tag">${options.rowCount} rows • sep: ${this._escape(options.dialect.separator || ',')}</span>
+        </div>
+        <div class="csvm-card-b">
+          <table class="csvm-table">
+            <thead>
+              <tr>
+                <th>Your CSV header</th>
+                <th>Map to</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${mappingTable}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+            this._attachEventListeners();
+        }
+        onMappingChange(callback) {
+            this.mappingChangeCallback = callback;
+        }
+        updateValidation(validation) {
+            if (!this.container || !this.currentOptions)
+                return;
+            // Update just the validation display
+            const validationElement = this.container.querySelector('.csvm-validation-status');
+            if (validationElement) {
+                validationElement.outerHTML = this._renderValidationStatus(validation);
+            }
+        }
+        destroy() {
+            // Clean up event listeners if needed
+            this.container = null;
+            this.mappingChangeCallback = null;
+            this.currentOptions = null;
+        }
+        showMessage(message) {
+            if (!this.container)
+                return;
+            this.container.innerHTML = this._banner(message);
+        }
+        _renderValidationStatus(validation) {
+            const { isValid, missingRequired } = validation;
+            return isValid
+                ? `<div class="csvm-validation-status csvm-validation-success">✓ All required columns are mapped</div>`
+                : `<div class="csvm-validation-status csvm-validation-error">
+          ⚠ Missing required columns: ${missingRequired.join(', ')}
+        </div>`;
+        }
+        _renderMappingTable(options) {
+            return options.headers.map(header => {
+                const currentMapping = options.currentMapping[header] || '';
+                const selectOptions = this._generateSelectOptions(options.columnSpecs, currentMapping, options.currentMapping);
+                return `
+        <tr>
+          <td><strong>${this._escape(header)}</strong></td>
+          <td>
+            <select data-src="${this._escape(header)}">
+              ${selectOptions}
+            </select>
+          </td>
+        </tr>
+      `;
+            }).join('');
+        }
+        _generateSelectOptions(columnSpecs, currentTargetName, allMappings) {
+            // Count how many times each target is used
+            const usageCounts = new Map();
+            Object.values(allMappings).forEach(target => {
+                if (target)
+                    usageCounts.set(target, (usageCounts.get(target) || 0) + 1);
+            });
+            const ignoreOption = '<option value="">— Ignore —</option>';
+            const columnOptions = columnSpecs.map(spec => {
+                const count = usageCounts.get(spec.name) || 0;
+                const isCurrentTarget = currentTargetName === spec.name;
+                const canUse = spec.allowDuplicates === true || count === 0 || isCurrentTarget;
+                const disabled = !canUse ? 'disabled' : '';
+                const selected = isCurrentTarget ? 'selected' : '';
+                const title = this._escape(spec.title || spec.name);
+                const multiIndicator = spec.allowDuplicates ? ' (multi)' : '';
+                return `<option value="${this._escape(spec.name)}" ${selected} ${disabled}>${title}${multiIndicator}</option>`;
+            });
+            return [ignoreOption, ...columnOptions].join('');
+        }
+        _attachEventListeners() {
+            if (!this.container || !this.mappingChangeCallback)
+                return;
+            const selectElements = this.container.querySelectorAll('select[data-src]');
+            selectElements.forEach(select => {
+                select.addEventListener('change', () => {
+                    const sourceHeader = select.getAttribute('data-src');
+                    const targetColumn = select.value;
+                    if (sourceHeader && this.mappingChangeCallback) {
+                        this.mappingChangeCallback(sourceHeader, targetColumn);
+                    }
+                });
+            });
+        }
+        _banner(text) {
+            return `<div class="csvm-note">${this._escape(text)}</div>`;
+        }
+        _escape(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        static _ensureStyles() {
+            const id = 'csv-mapper-styles';
+            if (document.getElementById(id))
+                return;
+            const style = document.createElement('style');
+            style.id = id;
+            style.textContent = `
+      /* Light theme (default) */
+      .csvm-card { 
+        border: 1px solid #ddd; 
+        border-radius: 4px; 
+        margin: 10px 0; 
+        background: #ffffff;
+      }
+      .csvm-card-h { 
+        background: #f8f9fa; 
+        padding: 12px 16px; 
+        border-bottom: 1px solid #ddd; 
+        font-weight: 600; 
+        color: #333;
+      }
+      .csvm-card-b { padding: 0; }
+      .csvm-table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        background: #ffffff;
+      }
+      .csvm-table th, .csvm-table td { 
+        padding: 8px 12px; 
+        text-align: left; 
+        border-bottom: 1px solid #eee; 
+        color: #333;
+      }
+      .csvm-table th { 
+        background: #f8f9fa; 
+        font-weight: 600; 
+      }
+      .csvm-table select { 
+        width: 100%; 
+        padding: 4px 8px; 
+        border: 1px solid #ccc; 
+        border-radius: 3px; 
+        background: #ffffff;
+        color: #333;
+      }
+      .csvm-tag { 
+        background: #007cba; 
+        color: white; 
+        padding: 2px 6px; 
+        border-radius: 3px; 
+        font-size: 0.85em; 
+        font-weight: normal; 
+      }
+      .csvm-note { 
+        padding: 12px; 
+        background: #f8f9fa; 
+        border: 1px solid #ddd; 
+        border-radius: 4px; 
+        color: #6c757d; 
+      }
+      .csvm-validation-status { 
+        padding: 8px 12px; 
+        margin-bottom: 10px; 
+        border-radius: 4px; 
+        font-weight: 500; 
+      }
+      .csvm-validation-success { 
+        background: #d4edda; 
+        border: 1px solid #c3e6cb; 
+        color: #155724; 
+      }
+      .csvm-validation-error { 
+        background: #f8d7da; 
+        border: 1px solid #f5c6cb; 
+        color: #721c24; 
+      }
+
+      /* Dark theme */
+      @media (prefers-color-scheme: dark) {
+        .csvm-card { 
+          border: 1px solid #444; 
+          background: #1e1e1e;
+        }
+        .csvm-card-h { 
+          background: #2d2d2d; 
+          border-bottom: 1px solid #444; 
+          color: #e0e0e0;
+        }
+        .csvm-table { 
+          background: #1e1e1e;
+        }
+        .csvm-table th, .csvm-table td { 
+          border-bottom: 1px solid #444; 
+          color: #e0e0e0;
+        }
+        .csvm-table th { 
+          background: #2d2d2d; 
+        }
+        .csvm-table select { 
+          border: 1px solid #555; 
+          background: #2d2d2d;
+          color: #e0e0e0;
+        }
+        .csvm-table select:focus {
+          border-color: #007cba;
+          outline: none;
+        }
+        .csvm-tag { 
+          background: #0099e6; 
+        }
+        .csvm-note { 
+          background: #2d2d2d; 
+          border: 1px solid #444; 
+          color: #a0a0a0; 
+        }
+        .csvm-validation-success { 
+          background: #1e3a1e; 
+          border: 1px solid #2d5a2d; 
+          color: #4caf50; 
+        }
+        .csvm-validation-error { 
+          background: #3a1e1e; 
+          border: 1px solid #5a2d2d; 
+          color: #f44336; 
+        }
+      }
+    `;
+            document.head.appendChild(style);
+        }
+    }
+
+    /**
+     * Minimal UI renderer with a simpler, more compact interface
+     * Good example of how to create alternative renderers
+     */
+    class MinimalUIRenderer {
+        constructor() {
+            this.container = null;
+            this.mappingChangeCallback = null;
+            MinimalUIRenderer._ensureStyles();
+        }
+        render(container, options) {
+            this.container = container;
+            if (!options.headers.length) {
+                container.innerHTML = '<div class="minimal-note">No CSV loaded</div>';
+                return;
+            }
+            const { headers, columnSpecs, currentMapping, validation, rowCount, dialect } = options;
+            // Simple compact layout
+            container.innerHTML = `
+      <div class="minimal-mapper">
+        <div class="minimal-header">
+          <span class="minimal-title">Map ${headers.length} columns</span>
+          <span class="minimal-info">${rowCount} rows</span>
+          ${this._renderValidationBadge(validation)}
+        </div>
+        
+        <div class="minimal-mappings">
+          ${headers.map(header => this._renderMappingRow(header, columnSpecs, currentMapping)).join('')}
+        </div>
+      </div>
+    `;
+            this._attachEventListeners();
+        }
+        onMappingChange(callback) {
+            this.mappingChangeCallback = callback;
+        }
+        updateValidation(validation) {
+            if (!this.container)
+                return;
+            const badge = this.container.querySelector('.minimal-validation-badge');
+            if (badge) {
+                badge.outerHTML = this._renderValidationBadge(validation);
+            }
+        }
+        destroy() {
+            this.container = null;
+            this.mappingChangeCallback = null;
+        }
+        showMessage(message) {
+            if (!this.container)
+                return;
+            this.container.innerHTML = `<div class="minimal-note">${this._escape(message)}</div>`;
+        }
+        _renderValidationBadge(validation) {
+            const { isValid, missingRequired } = validation;
+            const className = isValid ? 'minimal-validation-badge valid' : 'minimal-validation-badge invalid';
+            const text = isValid ? '✓' : `⚠ ${missingRequired.length}`;
+            const title = isValid ? 'All required columns mapped' : `Missing: ${missingRequired.join(', ')}`;
+            return `<span class="${className}" title="${this._escape(title)}">${text}</span>`;
+        }
+        _renderMappingRow(header, columnSpecs, currentMapping) {
+            const currentTarget = currentMapping[header] || '';
+            const options = this._generateOptions(columnSpecs, currentTarget);
+            return `
+      <div class="minimal-mapping-row">
+        <span class="minimal-source">${this._escape(header)}</span>
+        <select class="minimal-select" data-src="${this._escape(header)}">
+          ${options}
+        </select>
+      </div>
+    `;
+        }
+        _generateOptions(columnSpecs, currentTarget) {
+            const ignoreOption = '<option value="">—</option>';
+            const columnOptions = columnSpecs.map(spec => {
+                const selected = currentTarget === spec.name ? 'selected' : '';
+                const title = spec.title || spec.name;
+                return `<option value="${this._escape(spec.name)}" ${selected}>${this._escape(title)}</option>`;
+            });
+            return [ignoreOption, ...columnOptions].join('');
+        }
+        _attachEventListeners() {
+            if (!this.container || !this.mappingChangeCallback)
+                return;
+            const selectElements = this.container.querySelectorAll('select[data-src]');
+            selectElements.forEach(select => {
+                select.addEventListener('change', () => {
+                    const sourceHeader = select.getAttribute('data-src');
+                    const targetColumn = select.value;
+                    if (sourceHeader && this.mappingChangeCallback) {
+                        this.mappingChangeCallback(sourceHeader, targetColumn);
+                    }
+                });
+            });
+        }
+        _escape(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        static _ensureStyles() {
+            const id = 'minimal-ui-styles';
+            if (document.getElementById(id))
+                return;
+            const style = document.createElement('style');
+            style.id = id;
+            style.textContent = `
+      .minimal-mapper { border: 1px solid #ccc; border-radius: 6px; padding: 12px; font-family: -apple-system, sans-serif; }
+      .minimal-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+      .minimal-title { font-weight: 600; color: #333; }
+      .minimal-info { font-size: 0.9em; color: #666; }
+      .minimal-validation-badge { padding: 2px 6px; border-radius: 12px; font-size: 0.8em; font-weight: 500; }
+      .minimal-validation-badge.valid { background: #d4edda; color: #155724; }
+      .minimal-validation-badge.invalid { background: #f8d7da; color: #721c24; }
+      .minimal-mappings { display: grid; gap: 6px; }
+      .minimal-mapping-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; }
+      .minimal-source { font-weight: 500; color: #333; font-size: 0.9em; }
+      .minimal-select { padding: 4px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 0.9em; }
+      .minimal-note { padding: 8px; color: #666; text-align: center; font-style: italic; }
+    `;
+            document.head.appendChild(style);
+        }
+    }
 
     /*
      * CSV Mapper – ES module source (no deps)
@@ -54,6 +439,7 @@
                 autoThreshold: 0.8,
                 allowUnmappedTargets: true,
                 setInputValidity: false, // Whether to use setCustomValidity on the file input
+                uiRenderer: null, // Custom UI renderer
                 beforeParse: null,
                 beforeMap: null,
                 afterMap: null,
@@ -66,6 +452,12 @@
             this.headers = [];
             this.rows = [];
             this.dialect = { separator: ',', enclosure: '"', escape: null };
+            // Initialize UI renderer
+            this.uiRenderer = this.opts.uiRenderer || new DefaultUIRenderer();
+            this.uiRenderer.onMappingChange((sourceHeader, targetColumn) => {
+                this.mapping[sourceHeader] = targetColumn;
+                this._onMappingChange();
+            });
             this._onFileChange = this._onFileChange.bind(this);
             this.input.addEventListener('change', this._onFileChange);
             CsvMapper._ensureStyles();
@@ -74,6 +466,7 @@
             this.input.removeEventListener('change', this._onFileChange);
             if (this.controlsEl && this.controlsEl.dataset.csvMapperAutocreated === '1')
                 this.controlsEl.remove();
+            this.uiRenderer.destroy();
         }
         // ===== Public API =====
         getMapping() { return Object.assign({}, this.mapping); }
@@ -112,6 +505,32 @@
                 this.input.reportValidity();
             }
             return { isValid, missingRequired: missingRequired.map(c => c.title || c.name) };
+        }
+        _onMappingChange() {
+            // Re-render UI controls to update validation status
+            if (this.opts.showUserControls && this.controlsEl) {
+                this._renderControls();
+            }
+            // Validate mapping
+            this._validateMapping();
+            // Trigger afterMap event when mapping changes
+            try {
+                const { mappedRows, csv } = this._produceOutput();
+                const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
+                this.dispatchEvent(amEvent);
+                if (typeof this.opts.afterMap === 'function') {
+                    this.opts.afterMap(mappedRows, csv);
+                }
+                // Update mapping input
+                const mappingInput = this._resolveNode(this.opts.mappingInput || null);
+                if (mappingInput instanceof HTMLInputElement) {
+                    mappingInput.value = JSON.stringify(this.mapping);
+                }
+            }
+            catch (error) {
+                // If validation fails, just dispatch the validation event above
+                console.warn('Mapping change validation failed:', error);
+            }
         }
         /**
          * Checks if all required columns are mapped
@@ -283,83 +702,35 @@
         }
         // ===== UI =====
         _renderControls() {
-            const el = this.controlsEl;
-            if (!el)
+            if (!this.controlsEl || !this.opts.showUserControls)
                 return;
             if (!this.headers.length) {
-                el.innerHTML = this._banner('No CSV loaded. Choose a file to begin.');
+                this.uiRenderer.showMessage?.('No CSV loaded. Choose a file to begin.');
                 return;
             }
-            const selectOptions = (currentTargetName) => {
-                const taken = new Map();
-                Object.values(this.mapping).forEach(n => { if (!n)
-                    return; taken.set(n, (taken.get(n) || 0) + 1); });
-                return ['<option value="">— Ignore —</option>']
-                    .concat(this.columns.map(spec => {
-                    const count = taken.get(spec.name) || 0;
-                    const dupAllowed = spec.allowDuplicates === true;
-                    const disabled = !dupAllowed && spec.name !== currentTargetName && count > 0 ? 'disabled' : '';
-                    const sel = currentTargetName === spec.name ? 'selected' : '';
-                    const title = CsvMapper.escape(spec.title || spec.name);
-                    const requiredMark = spec.required ? ' *' : '';
-                    const dupMark = spec.allowDuplicates ? ' (multi)' : '';
-                    return `<option value="${CsvMapper.escape(spec.name)}" ${sel} ${disabled}>${title}${requiredMark}${dupMark}</option>`;
-                })).join('');
+            // Get current validation status
+            const validation = this._getValidationStatus();
+            // Prepare render options
+            const renderOptions = {
+                headers: this.headers,
+                columnSpecs: this.columns,
+                currentMapping: this.mapping,
+                validation,
+                rowCount: this.rows.length,
+                dialect: this.dialect
             };
-            const bodyRows = this.headers.map(h => {
-                const current = this.mapping[h] || '';
-                return `<tr>
-        <td><strong>${CsvMapper.escape(h)}</strong></td>
-        <td><select data-src="${CsvMapper.escape(h)}">${selectOptions(current)}</select></td>
-      </tr>`;
-            }).join('');
-            // Check validation status for required columns
-            const validation = this.validateMapping();
-            const validationHtml = validation.missingRequired.length > 0
-                ? `<div class="csvm-validation-error">
-           <strong>⚠ Required columns not mapped:</strong> ${validation.missingRequired.join(', ')}
-         </div>`
-                : `<div class="csvm-validation-success">✓ All required columns are mapped</div>`;
-            el.innerHTML = `
-      <div class="csvm-card">
-        <div class="csvm-card-h">Map your columns <span class="csvm-tag">${this.rows.length} rows • sep: ${CsvMapper.escape(this.dialect.separator || ',')}</span></div>
-        <div class="csvm-card-b">
-          <table class="csvm-table">
-            <thead><tr><th>Your CSV header</th><th>Map to</th></tr></thead>
-            <tbody>${bodyRows}</tbody>
-          </table>
-          ${this.columns.some(c => c.required) ? validationHtml : ''}
-        </div>
-      </div>`;
-            el.querySelectorAll('select[data-src]').forEach(sel => {
-                sel.addEventListener('change', () => {
-                    const selectEl = sel;
-                    const src = selectEl.getAttribute('data-src');
-                    if (src) {
-                        this.mapping[src] = selectEl.value;
-                    }
-                    this._renderControls();
-                    // Trigger validation event
-                    this._validateMapping();
-                    // Trigger afterMap event when mapping changes (only if valid or no required columns)
-                    try {
-                        const { mappedRows, csv } = this._produceOutput();
-                        const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
-                        this.dispatchEvent(amEvent);
-                        if (typeof this.opts.afterMap === 'function') {
-                            this.opts.afterMap(mappedRows, csv);
-                        }
-                    }
-                    catch (error) {
-                        // If validation fails, just dispatch the validation event above
-                    }
-                    // Update mapping input
-                    const mappingInput = this._resolveNode(this.opts.mappingInput || null);
-                    if (mappingInput instanceof HTMLInputElement) {
-                        mappingInput.value = JSON.stringify(this.mapping);
-                    }
-                });
-            });
+            // Render using the UI renderer
+            this.uiRenderer.render(this.controlsEl, renderOptions);
+        }
+        _getValidationStatus() {
+            const requiredColumns = this.columns.filter(c => c.required === true);
+            const mappedTargets = new Set(Object.values(this.mapping).filter(v => v));
+            const missingRequired = requiredColumns.filter(col => !mappedTargets.has(col.name));
+            return {
+                isValid: missingRequired.length === 0,
+                missingRequired: missingRequired.map(c => c.title || c.name),
+                mappedColumns: Array.from(mappedTargets)
+            };
         }
         _banner(text) { return `<div class="csvm-note">${CsvMapper.escape(text)}</div>`; }
         // ===== Auto mapping =====
@@ -641,7 +1012,11 @@
         }
     }
 
-    return CsvMapper;
+    exports.DefaultUIRenderer = DefaultUIRenderer;
+    exports.MinimalUIRenderer = MinimalUIRenderer;
+    exports.default = CsvMapper;
+
+    Object.defineProperty(exports, '__esModule', { value: true });
 
 }));
 //# sourceMappingURL=csv-mapper.umd.js.map

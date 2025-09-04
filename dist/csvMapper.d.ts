@@ -1,74 +1,7 @@
-export interface CsvDialect {
-    separator: string;
-    enclosure: string;
-    escape: string | null;
-}
-export interface ColumnSpec {
-    name: string;
-    title?: string;
-    required?: boolean;
-    allowDuplicates?: boolean;
-    match?: RegExp | ((header: string) => boolean);
-    transform?: (value: any, row: Record<string, any>) => any;
-    validate?: RegExp | ((value: any) => boolean) | ValidationRule;
-    validationMessage?: string;
-}
-export interface ValidationRule {
-    type: 'number' | 'boolean';
-    min?: number;
-    max?: number;
-}
-export interface CsvMapperOptions {
-    separator?: string;
-    enclosure?: string;
-    escape?: string;
-    guessMaxLines?: number;
-    outputSeparator?: string | null;
-    outputEnclosure?: string | null;
-    outputEscape?: string | null;
-    headers?: boolean;
-    remap?: boolean;
-    showUserControls?: boolean;
-    mappingInput?: HTMLElement | string | null;
-    controlsContainer?: HTMLElement | string | null;
-    columns?: (string | ColumnSpec)[];
-    autoThreshold?: number;
-    allowUnmappedTargets?: boolean;
-    setInputValidity?: boolean;
-    beforeParse?: ((text: string) => string | void) | null;
-    beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
-    afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
-}
-export interface ParseOptions {
-    headers?: boolean;
-    separator?: string;
-    enclosure?: string;
-    escape?: string;
-    guessMaxLines?: number;
-}
-export interface ParseResult {
-    headers: string[];
-    rows: Record<string, any>[];
-    dialect: CsvDialect;
-}
-export interface DetectDialectOptions {
-    separator?: string | null | undefined;
-    enclosure?: string | null | undefined;
-    escape?: string | null | undefined;
-    guessMaxLines?: number;
-}
-export interface MappedOutput {
-    mappedRows: MappedRow[];
-    csv: string | null;
-}
-export interface MappedRow extends Record<string, any> {
-    __errors__?: ValidationError[];
-}
-export interface ValidationError {
-    field: string;
-    message: string;
-    value: any;
-}
+import { CsvDialect, ColumnSpec, ValidationRule, CsvMapperOptions, ParseOptions, ParseResult, DetectDialectOptions, MappedOutput, MappedRow, UIRenderer } from './types.js';
+export { DefaultUIRenderer } from './ui/renderer/default.js';
+export { MinimalUIRenderer } from './ui/renderer/minimal.js';
+export * from './types.js';
 export default class CsvMapper extends EventTarget {
     input: HTMLInputElement;
     opts: CsvMapperOptions;
@@ -78,6 +11,7 @@ export default class CsvMapper extends EventTarget {
     headers: string[];
     rows: MappedRow[];
     dialect: CsvDialect;
+    uiRenderer: UIRenderer;
     /**
      * @param fileInput selector or element for <input type=file>
      * @param options configuration options
@@ -93,6 +27,7 @@ export default class CsvMapper extends EventTarget {
         isValid: boolean;
         missingRequired: string[];
     };
+    _onMappingChange(): void;
     /**
      * Checks if all required columns are mapped
      * @returns Object with validation status and missing required columns
@@ -109,6 +44,7 @@ export default class CsvMapper extends EventTarget {
     _validateRequiredColumns(): string[];
     _produceOutput(): MappedOutput;
     _renderControls(): void;
+    private _getValidationStatus;
     _banner(text: string): string;
     _autoMap(): void;
     _matchScore(srcHeader: string, spec: ColumnSpec): number;
@@ -126,4 +62,4 @@ export default class CsvMapper extends EventTarget {
     static _ensureStyles(): void;
     static escape(s: any): string;
 }
-//# sourceMappingURL=csv-mapper.d.ts.map
+//# sourceMappingURL=csvMapper.d.ts.map

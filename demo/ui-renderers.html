@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper UI Renderers Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #ffffff;
+            color: #333;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .demo-section {
+            margin-bottom: 40px;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        .demo-section h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .file-input {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+        }
+        .controls-container {
+            min-height: 100px;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            transition: border-color 0.3s ease;
+        }
+        .theme-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+
+        /* Dark mode styles */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #1a1a1a;
+                color: #e0e0e0;
+            }
+            .demo-section {
+                border-color: #444;
+                background: #2a2a2a;
+            }
+            .demo-section h2 {
+                color: #e0e0e0;
+            }
+            .file-input {
+                background: #333;
+            }
+            .controls-container {
+                border-color: #555;
+            }
+            .theme-info {
+                background: #1e2a3a;
+                border-color: #3a5a7a;
+                color: #b3d9ff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>CSV Mapper UI Renderers Demo</h1>
+    <p>This demo shows how different UI renderers can be used with the same CSV Mapper core.</p>
+    
+    <div class="theme-info">
+        <strong>🎨 Theme Support:</strong> This demo automatically adapts to your system's light/dark mode preference. 
+        Try changing your OS theme to see the CSV Mapper components switch themes in real-time!
+    </div>
+    
+    <div class="demo-section">
+        <h2>Default UI Renderer</h2>
+        <p>The standard table-based interface with full validation display.</p>
+        
+        <div class="file-input">
+            <label for="csv1">Upload CSV:</label>
+            <input id="csv1" type="file" accept=".csv">
+        </div>
+        
+        <div id="controls1" class="controls-container">
+            <!-- Default UI will render here -->
+        </div>
+        
+        <div id="status1"></div>
+    </div>
+
+    <div class="demo-section">
+        <h2>Minimal UI Renderer</h2>
+        <p>A compact, minimalist interface perfect for tight spaces.</p>
+        
+        <div class="file-input">
+            <label for="csv2">Upload CSV:</label>
+            <input id="csv2" type="file" accept=".csv">
+        </div>
+        
+        <div id="controls2" class="controls-container">
+            <!-- Minimal UI will render here -->
+        </div>
+        
+        <div id="status2"></div>
+    </div>
+
+    <script type="module">
+        import CsvMapper, { MinimalUIRenderer } from "../dist/csv-mapper.esm.js";
+
+        // Default UI Renderer
+        const mapper1 = new CsvMapper('#csv1', {
+            columns: [
+                { name: 'product_id', required: true },
+                'name',
+                'price',
+                'category',
+                'stock'
+            ],
+            controlsContainer: '#controls1',
+            showUserControls: true,
+            // uiRenderer: new DefaultUIRenderer() // This is the default
+        });
+
+        mapper1.addEventListener('validationChange', (e) => {
+            const status = document.getElementById('status1');
+            const { isValid, missingRequired } = e.detail;
+            status.innerHTML = isValid 
+                ? '<div style="color: green;">✓ Valid mapping</div>'
+                : `<div style="color: red;">⚠ Missing: ${missingRequired.join(', ')}</div>`;
+        });
+
+        // Minimal UI Renderer
+        const mapper2 = new CsvMapper('#csv2', {
+            columns: [
+                { name: 'product_id', required: true },
+                'name', 
+                'price',
+                'category',
+                'stock'
+            ],
+            controlsContainer: '#controls2',
+            showUserControls: true,
+            uiRenderer: new MinimalUIRenderer() // Use the minimal renderer
+        });
+
+        mapper2.addEventListener('validationChange', (e) => {
+            const status = document.getElementById('status2');
+            const { isValid, missingRequired } = e.detail;
+            status.innerHTML = isValid 
+                ? '<div style="color: green;">✓ Valid mapping</div>'
+                : `<div style="color: red;">⚠ Missing: ${missingRequired.join(', ')}</div>`;
+        });
+    </script>
+</body>
+</html>

@@ -18,87 +18,27 @@
  *   });
  */
 
-// Type definitions
-export interface CsvDialect {
-  separator: string;
-  enclosure: string;
-  escape: string | null;
-}
+import {
+  CsvDialect,
+  ColumnSpec,
+  ValidationResult,
+  ValidationRule,
+  CsvMapperOptions,
+  ParseOptions,
+  ParseResult,
+  DetectDialectOptions,
+  MappedOutput,
+  MappedRow,
+  ValidationError,
+  UIRenderer,
+  UIRenderOptions
+} from './types.js';
+import { DefaultUIRenderer } from './ui/renderer/default.js';
 
-export interface ColumnSpec {
-  name: string;
-  title?: string;
-  required?: boolean;
-  allowDuplicates?: boolean;
-  match?: RegExp | ((header: string) => boolean);
-  transform?: (value: any, row: Record<string, any>) => any;
-  validate?: RegExp | ((value: any) => boolean) | ValidationRule;
-  validationMessage?: string;
-}
-
-export interface ValidationRule {
-  type: 'number' | 'boolean';
-  min?: number;
-  max?: number;
-}
-
-export interface CsvMapperOptions {
-  separator?: string;
-  enclosure?: string;
-  escape?: string;
-  guessMaxLines?: number;
-  outputSeparator?: string | null;
-  outputEnclosure?: string | null;
-  outputEscape?: string | null;
-  headers?: boolean;
-  remap?: boolean;
-  showUserControls?: boolean;
-  mappingInput?: HTMLElement | string | null;
-  controlsContainer?: HTMLElement | string | null;
-  columns?: (string | ColumnSpec)[];
-  autoThreshold?: number;
-  allowUnmappedTargets?: boolean;
-  setInputValidity?: boolean;
-  beforeParse?: ((text: string) => string | void) | null;
-  beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
-  afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
-}
-
-export interface ParseOptions {
-  headers?: boolean;
-  separator?: string;
-  enclosure?: string;
-  escape?: string;
-  guessMaxLines?: number;
-}
-
-export interface ParseResult {
-  headers: string[];
-  rows: Record<string, any>[];
-  dialect: CsvDialect;
-}
-
-export interface DetectDialectOptions {
-  separator?: string | null | undefined;
-  enclosure?: string | null | undefined;
-  escape?: string | null | undefined;
-  guessMaxLines?: number;
-}
-
-export interface MappedOutput {
-  mappedRows: MappedRow[];
-  csv: string | null;
-}
-
-export interface MappedRow extends Record<string, any> {
-  __errors__?: ValidationError[];
-}
-
-export interface ValidationError {
-  field: string;
-  message: string;
-  value: any;
-}
+// Export UI renderers for use by consumers
+export { DefaultUIRenderer } from './ui/renderer/default.js';
+export { MinimalUIRenderer } from './ui/renderer/minimal.js';
+export * from './types.js';
 
 export default class CsvMapper extends EventTarget {
   public input: HTMLInputElement;
@@ -109,6 +49,7 @@ export default class CsvMapper extends EventTarget {
   public headers: string[];
   public rows: MappedRow[];
   public dialect: CsvDialect;
+  public uiRenderer: UIRenderer;
 
   /**
    * @param fileInput selector or element for <input type=file>
@@ -142,6 +83,7 @@ export default class CsvMapper extends EventTarget {
       autoThreshold: 0.8,
       allowUnmappedTargets: true,
       setInputValidity: false,      // Whether to use setCustomValidity on the file input
+      uiRenderer: null,             // Custom UI renderer
       beforeParse: null,
       beforeMap: null,
       afterMap: null,
@@ -156,6 +98,13 @@ export default class CsvMapper extends EventTarget {
     this.rows = [];
     this.dialect = { separator: ',', enclosure: '"', escape: null };
 
+    // Initialize UI renderer
+    this.uiRenderer = this.opts.uiRenderer || new DefaultUIRenderer();
+    this.uiRenderer.onMappingChange((sourceHeader, targetColumn) => {
+      this.mapping[sourceHeader] = targetColumn;
+      this._onMappingChange();
+    });
+
     this._onFileChange = this._onFileChange.bind(this);
     this.input.addEventListener('change', this._onFileChange);
 
@@ -165,6 +114,7 @@ export default class CsvMapper extends EventTarget {
   destroy(){
     this.input.removeEventListener('change', this._onFileChange);
     if (this.controlsEl && this.controlsEl.dataset.csvMapperAutocreated === '1') this.controlsEl.remove();
+    this.uiRenderer.destroy();
   }
 
   // ===== Public API =====
@@ -206,6 +156,36 @@ export default class CsvMapper extends EventTarget {
     }
 
     return { isValid, missingRequired: missingRequired.map(c => c.title || c.name) };
+  }
+
+  _onMappingChange(): void {
+    // Re-render UI controls to update validation status
+    if (this.opts.showUserControls && this.controlsEl) {
+      this._renderControls();
+    }
+
+    // Validate mapping
+    this._validateMapping();
+
+    // Trigger afterMap event when mapping changes
+    try {
+      const { mappedRows, csv } = this._produceOutput();
+      const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
+      this.dispatchEvent(amEvent);
+      
+      if (typeof this.opts.afterMap === 'function') {
+        this.opts.afterMap(mappedRows, csv);
+      }
+      
+      // Update mapping input
+      const mappingInput = this._resolveNode(this.opts.mappingInput || null);
+      if (mappingInput instanceof HTMLInputElement) {
+        mappingInput.value = JSON.stringify(this.mapping);
+      }
+    } catch (error) {
+      // If validation fails, just dispatch the validation event above
+      console.warn('Mapping change validation failed:', error);
+    }
   }
 
   /**
@@ -381,85 +361,40 @@ export default class CsvMapper extends EventTarget {
 
   // ===== UI =====
   _renderControls(){
-    const el = this.controlsEl; if (!el) return;
-    if (!this.headers.length) { el.innerHTML = this._banner('No CSV loaded. Choose a file to begin.'); return; }
+    if (!this.controlsEl || !this.opts.showUserControls) return;
 
-    const selectOptions = (currentTargetName: string): string => {
-      const taken = new Map();
-      Object.values(this.mapping).forEach(n => { if (!n) return; taken.set(n, (taken.get(n)||0)+1); });
-      return ['<option value="">— Ignore —</option>']
-        .concat(this.columns.map(spec => {
-          const count = taken.get(spec.name)||0;
-          const dupAllowed = spec.allowDuplicates === true;
-          const disabled = !dupAllowed && spec.name !== currentTargetName && count > 0 ? 'disabled' : '';
-          const sel = currentTargetName === spec.name ? 'selected' : '';
-          const title = CsvMapper.escape(spec.title || spec.name);
-          const requiredMark = spec.required ? ' *' : '';
-          const dupMark = spec.allowDuplicates ? ' (multi)' : '';
-          return `<option value="${CsvMapper.escape(spec.name)}" ${sel} ${disabled}>${title}${requiredMark}${dupMark}</option>`;
-        })).join('');
+    if (!this.headers.length) {
+      this.uiRenderer.showMessage?.('No CSV loaded. Choose a file to begin.');
+      return;
+    }
+
+    // Get current validation status
+    const validation = this._getValidationStatus();
+
+    // Prepare render options
+    const renderOptions: UIRenderOptions = {
+      headers: this.headers,
+      columnSpecs: this.columns,
+      currentMapping: this.mapping,
+      validation,
+      rowCount: this.rows.length,
+      dialect: this.dialect
     };
 
-    const bodyRows = this.headers.map(h => {
-      const current = this.mapping[h] || '';
-      return `<tr>
-        <td><strong>${CsvMapper.escape(h)}</strong></td>
-        <td><select data-src="${CsvMapper.escape(h)}">${selectOptions(current)}</select></td>
-      </tr>`;
-    }).join('');
+    // Render using the UI renderer
+    this.uiRenderer.render(this.controlsEl, renderOptions);
+  }
 
-    // Check validation status for required columns
-    const validation = this.validateMapping();
-    const validationHtml = validation.missingRequired.length > 0 
-      ? `<div class="csvm-validation-error">
-           <strong>⚠ Required columns not mapped:</strong> ${validation.missingRequired.join(', ')}
-         </div>`
-      : `<div class="csvm-validation-success">✓ All required columns are mapped</div>`;
-
-    el.innerHTML = `
-      <div class="csvm-card">
-        <div class="csvm-card-h">Map your columns <span class="csvm-tag">${this.rows.length} rows • sep: ${CsvMapper.escape(this.dialect.separator || ',')}</span></div>
-        <div class="csvm-card-b">
-          <table class="csvm-table">
-            <thead><tr><th>Your CSV header</th><th>Map to</th></tr></thead>
-            <tbody>${bodyRows}</tbody>
-          </table>
-          ${this.columns.some(c => c.required) ? validationHtml : ''}
-        </div>
-      </div>`;
-
-    el.querySelectorAll('select[data-src]').forEach(sel => {
-      sel.addEventListener('change', () => {
-        const selectEl = sel as HTMLSelectElement;
-        const src = selectEl.getAttribute('data-src');
-        if (src) {
-          this.mapping[src] = selectEl.value;
-        }
-        this._renderControls();
-        
-        // Trigger validation event
-        this._validateMapping();
-        
-        // Trigger afterMap event when mapping changes (only if valid or no required columns)
-        try {
-          const { mappedRows, csv } = this._produceOutput();
-          const amEvent = new CustomEvent('afterMap', { detail: { rows: mappedRows, csv } });
-          this.dispatchEvent(amEvent);
-          
-          if (typeof this.opts.afterMap === 'function') {
-            this.opts.afterMap(mappedRows, csv);
-          }
-        } catch (error) {
-          // If validation fails, just dispatch the validation event above
-        }
-
-        // Update mapping input
-        const mappingInput = this._resolveNode(this.opts.mappingInput || null);
-        if (mappingInput instanceof HTMLInputElement) {
-          mappingInput.value = JSON.stringify(this.mapping);
-        }
-      });
-    });
+  private _getValidationStatus(): ValidationResult {
+    const requiredColumns = this.columns.filter(c => c.required === true);
+    const mappedTargets = new Set(Object.values(this.mapping).filter(v => v));
+    const missingRequired = requiredColumns.filter(col => !mappedTargets.has(col.name));
+    
+    return {
+      isValid: missingRequired.length === 0,
+      missingRequired: missingRequired.map(c => c.title || c.name),
+      mappedColumns: Array.from(mappedTargets)
+    };
   }
 
   _banner(text: string): string { return `<div class="csvm-note">${CsvMapper.escape(text)}</div>`; }

@@ -4,8 +4,8 @@ import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
 import terser from '@rollup/plugin-terser';
 
-const input = 'src/csv-mapper.ts';   // TypeScript source
-const name = 'CsvMapper';            // global for UMD builds
+const input = 'src/csvMapper.ts';   // TypeScript source
+const name = 'CsvMapper';           // global for UMD builds
 
 export default [
   // Unminified builds
