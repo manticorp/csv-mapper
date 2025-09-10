@@ -12,9 +12,10 @@
     };
     const normalize = (s) => String(s || '').toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim();
     const classSafeString = (str) => str.replace(/[^a-zA-Z0-9-_]+/g, '-');
-    const logger = console ;
-    const debug = console.debug.bind(console) ;
-    const debugTable = console.table.bind(console) ;
+    const nop = (...args) => { };
+    const logger = { log: nop, group: nop, groupCollapsed: nop, groupEnd: nop, info: nop, debug: nop, error: nop, warn: nop, table: nop };
+    const debug = nop;
+    const debugTable = nop;
 
     class CsvRow {
         constructor(index, data, headers = null) {

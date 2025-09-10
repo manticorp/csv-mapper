@@ -4,7 +4,7 @@
 
 import { Csv } from "./csv/csv";
 import { CsvRow } from "./csv/row";
-import { TransformOptions } from "./transform/dataTransformer.clean";
+import { TransformOptions } from "./transform/dataTransformer";
 
 export interface CsvDialect {
   separator: string;
