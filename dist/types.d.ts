@@ -1,4 +1,5 @@
 import { Csv } from "./csv/csv";
+import { CsvRow } from "./csv/row";
 import { TransformOptions } from "./transform/dataTransformer.clean";
 export interface CsvDialect {
     separator: string;
@@ -38,7 +39,7 @@ export interface MappedOutput {
     validation: ValidationResult;
 }
 export interface ValidationError {
-    row: Record<string, string>;
+    row: CsvRow;
     rowIndex: number;
     field: string;
     message: string;

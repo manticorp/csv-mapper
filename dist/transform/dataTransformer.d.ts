@@ -103,6 +103,7 @@ export declare class DataTransformer extends EventTarget {
      * @param columnName Column name where error occurred
      * @param value Value that caused the error
      * @param message Error message
+     * @returns Boolean indicating whether result was nullified
      */
     private _transformationError;
     /**
@@ -111,7 +112,7 @@ export declare class DataTransformer extends EventTarget {
      * @param columnName Column name where error occurred
      * @param value Value that failed validation
      * @param message Error message
-     * @returns Corrected value if any, otherwise original value
+     * @returns Boolean indicating whether result was nullified
      */
     private _valueValidationError;
 }

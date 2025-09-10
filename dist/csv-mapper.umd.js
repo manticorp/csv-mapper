@@ -501,6 +501,7 @@
             }
             // Transform rows
             const { data, errors } = this.transformRows(inputCsv, mapping, columnSpecs);
+            debug({ data, errors });
             // Generate CSV if requested (simple format only)
             let csv = null;
             if (this.options.generateCsv) {
@@ -552,11 +553,11 @@
          */
         transformRows(inputCsv, mapping, columnSpecs) {
             let rowIndex = 0;
+            const errors = [];
             const inverseMapping = this._invertMapping(mapping);
             let data = inputCsv.clone();
             data.remapColumns(mapping);
             const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
-            debug({ mapping, inverseMapping });
             if (data.headers) {
                 const toRemove = data.headers?.filter(header => !inverseMapping[header]);
                 toRemove.forEach(col => data.removeColumn(col));
@@ -576,7 +577,6 @@
                     const spec = colCache.get(header) ?? columnSpecs.find(spec => (spec.outputHeader ?? spec.name ?? spec.title) === header);
                     colCache.set(header, spec ?? null);
                     if (!spec) {
-                        logger.warn(`No column spec found for header "${header}".`, { header, spec });
                         throw new Error(`Column spec not found for ${header}`);
                     }
                     // Apply custom transformation if specified
@@ -599,16 +599,17 @@
                     }
                     // Validate the transformed value
                     if (spec.validate !== undefined) {
-                        const isValid = DataTransformer.validateValue(transformedValue, spec.validate);
+                        const validate = typeof spec.validate === 'string' ? { type: spec.validate } : spec.validate;
+                        const isValid = DataTransformer.validateValue(transformedValue, validate);
                         if (!isValid) {
                             let message;
-                            if (typeof spec.validate === 'object' && spec.validate !== null && 'type' in spec.validate) {
-                                message = `Value "${transformedValue}" is not a valid ${spec.validate.type}`;
+                            if (typeof validate === 'object' && validate !== null && 'type' in validate) {
+                                message = `Value "${transformedValue}" is not a valid ${validate.type}`;
                             }
-                            else if (spec.validate instanceof RegExp) {
-                                message = `Value "${transformedValue}" does not match pattern ${spec.validate}`;
+                            else if (validate instanceof RegExp) {
+                                message = `Value "${transformedValue}" does not match pattern ${validate}`;
                             }
-                            else if (typeof spec.validate === 'function') {
+                            else if (typeof validate === 'function') {
                                 message = `Value "${transformedValue}" failed custom validation`;
                             }
                             else {
@@ -617,9 +618,15 @@
                             if (spec.validationMessage) {
                                 message = spec.validationMessage;
                             }
-                            const result = this._valueValidationError(rowIndex, spec.title || spec.name, transformedValue, message);
+                            const result = this._valueValidationError(rowIndex, header, transformedValue, message);
                             if (result) {
-                                transformedValue = result;
+                                errors.push({
+                                    row: sourceRow,
+                                    rowIndex: rowIndex,
+                                    field: header,
+                                    message,
+                                    value: transformedValue
+                                });
                             }
                         }
                     }
@@ -627,7 +634,7 @@
                 }
                 rowIndex++;
             }
-            return { data, errors: [] };
+            return { data, errors };
         }
         /**
          * Generate CSV output from transformed data
@@ -843,9 +850,10 @@
          * @param columnName Column name where error occurred
          * @param value Value that caused the error
          * @param message Error message
+         * @returns Boolean indicating whether result was nullified
          */
         _transformationError(rowIndex, columnName, value, message) {
-            this.dispatchEvent(new CustomEvent('transformationError', {
+            return this.dispatchEvent(new CustomEvent('transformationError', {
                 detail: { rowIndex, columnName, value, message }
             }));
         }
@@ -855,14 +863,13 @@
          * @param columnName Column name where error occurred
          * @param value Value that failed validation
          * @param message Error message
-         * @returns Corrected value if any, otherwise original value
+         * @returns Boolean indicating whether result was nullified
          */
         _valueValidationError(rowIndex, columnName, value, message) {
             const event = new CustomEvent('valueValidationError', {
                 detail: { rowIndex, columnName, value, message }
             });
-            this.dispatchEvent(event);
-            return value; // Return original value by default
+            return this.dispatchEvent(event);
         }
     }
 

@@ -3,6 +3,7 @@
  */
 
 import { Csv } from "./csv/csv";
+import { CsvRow } from "./csv/row";
 import { TransformOptions } from "./transform/dataTransformer.clean";
 
 export interface CsvDialect {
@@ -50,7 +51,7 @@ export interface MappedOutput {
 }
 
 export interface ValidationError {
-  row: Record<string, string>;
+  row: CsvRow,
   rowIndex: number;
   field: string;
   message: string;

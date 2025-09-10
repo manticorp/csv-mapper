@@ -22,9 +22,6 @@
     <script src="../dist/csv-mapper.umd.min.js"></script>
 
     <script>
-        // CsvMapper is available as a global object
-        const fileInput = document.getElementById('csvFile');
-        const result = document.getElementById('result');
         const options = {
             columns: [
                 'id',
@@ -33,18 +30,6 @@
                 { name: 'maybe_missing', title: 'Maybe Missing', validate: 'boolean' }
             ]
         };
-
-        // Create mapper with simple configuration
-        const mapper = new CsvMapper(fileInput, options);
-
-        // Listen for when CSV is processed
-        mapper.addEventListener('mapped', (event) => {
-            const rows = event.detail.rows;
-            result.innerHTML = `
-                <h3>Processed ${rows.length} rows:</h3>
-                <pre>${JSON.stringify(rows, null, 2)}</pre>
-            `;
-        });
 
         // Static method usage
         const csvText = `name,not_used,email,maybe_missing
@@ -58,6 +43,22 @@
 
         const mapperWithNoUi = new CsvMapper(options);
         console.log('No UI result: ', mapperWithNoUi.mapCsv(csvText));
+
+        // HTML usage
+        const fileInput = document.getElementById('csvFile');
+        const result = document.getElementById('result');
+
+        // Create mapper with simple configuration
+        const mapper = new CsvMapper(fileInput, options);
+
+        // Listen for when CSV is processed
+        mapper.addEventListener('mapped', (event) => {
+            const rows = event.detail.rows;
+            result.innerHTML = `
+                <h3>Processed ${rows.length} rows:</h3>
+                <pre>${JSON.stringify(rows, null, 2)}</pre>
+            `;
+        });
     </script>
 </body>
 </html>
