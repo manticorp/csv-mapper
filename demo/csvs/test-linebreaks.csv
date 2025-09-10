@@ -1,0 +1,7 @@
+product_id,name,price,category,stock
+1,"Multi-line
+Product Name
+With Breaks",19.99,"Category A",100
+2,"Another
+Long Product
+Description",29.99,"Category B",50

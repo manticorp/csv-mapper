@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Validation Refactoring Test</title>
+    <link href="css/main.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/toolbar/prism-toolbar.min.css" integrity="sha256-jsQbSO1yj62eu6dP6f2fJESRgkHNNEpxrK8NnO6/oyc=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/match-braces/prism-match-braces.min.css" integrity="sha256-ofzmpw1bhHX6o2yPsxm/qv2HF/pxkmWJhQiMnlQ+4Tw=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/themes/prism-okaidia.min.css" integrity="sha256-zzHVEO0xOoVm0I6bT9v5SgpRs1cYNyvEvHXW/1yCgqU=" crossorigin="anonymous">
+  </head>
+  <body>
+    <section class="section">
+        <div class="container content">
+            <h1 class="title">Validation ✅❌</h1>
+            <p>This is a demonstration of some of the validation features of CsvMapper.</p>
+
+            <div class="block">
+                <h2>CsvMapper Setup Code</h2>
+                <details>
+                    <summary>Code Sample</summary>
+                    <div id="code-sample">
+                    </div>
+                </details>
+                <details>
+                    <summary>CSV Sample</summary>
+                    <pre><code class="language-csv" id="sample-csv">id,name,ascii_name,email_address,phone_number,date,iso8601_date,number,number_with_min_max,boolean
+AB1,Dáriús Énglébert,John Doe,john@example.com,555-1234,2023-01-01,2023-01-01T00:00:00Z,1,4,1
+AB2,Jane Smith,Jane Smith,jane@example.com,555-5678,2023-01-02,2023-01-02T00:00:00Z,2,3,0
+AB3,Bob Wilson,Bob Wilson,bob@example.com,555-9999,2023-01-03,2023-01-03T00:00:00Z,3.141,1,"Yes"
+failing row,abc123,Bobbity boo,not a valid email,909990930139,2024-13-99,2023-13-99T00:00:00Z,a,-100,"maybe"
+failing row,abc123,Bobbity boo,not a valid email that is actually quite long so might cause an error?,909990930139,2024-13-99,2023-13-99T00:00:00Z,a,-100,"maybe"</code></pre>
+                </details>
+            </div>
+
+            <div class="block">
+                <h2>Test Setup</h2>
+                <input type="file" id="csv-file" accept=".csv">
+            </div>
+
+            <div class="block">
+                <h2>Validation Events Log</h2>
+                <div id="events-log"></div>
+            </div>
+
+            <div class="block">
+                <h2>Method Testing</h2>
+                <div id="method-tests"></div>
+            </div>
+        </div>
+    </section>
+    <script src="../dist/csv-mapper.umd.min.js"></script>
+    <script id="base-script">
+        // Setup CSV Mapper with required columns
+        const columns = [
+            {
+                name: 'id',
+                title: 'ID',
+                required: true,
+                validate: /^[A-Z]{2}\d+$/,
+                validationSuffix: 'Should be a valid ID of the form [letter][letter][numbers+] e.g. AB123.'
+            },
+            {
+                name: 'name',
+                title: 'Name',
+                required: true,
+            },
+            {
+                name: 'ascii_name',
+                title: 'Ascii Name',
+                required: false,
+                validate: /^[A-Za-z\s]+$/
+            },
+            {
+                name: 'email',
+                title: 'Email',
+                required: false,
+                validate: 'email'
+            },
+            {
+                name: 'phone',
+                title: 'Phone',
+                required: false,
+                validate: 'phone'
+            },
+            {
+                name: 'number',
+                title: 'Number',
+                required: false,
+                validate: 'number'
+            },
+            {
+                name: 'number_with_min_max',
+                title: 'Number (min max)',
+                required: false,
+                validate: {
+                    type: 'number',
+                    min: 0,
+                    max: 10
+                }
+            },
+            {
+                name: 'boolean',
+                title: 'Boolean',
+                required: false,
+                validate: 'boolean'
+            },
+            {
+                name: 'date',
+                title: 'Date',
+                required: false,
+                validate: 'date'
+            },
+            {
+                name: 'iso8601',
+                title: 'ISO8601 Date',
+                required: false,
+                validate: {
+                    type: 'date',
+                    format: 'iso8601'
+                }
+            }
+        ];
+
+        const csvMapper = new CsvMapper('#csv-file', {
+            columns,
+            uiRenderer: 'minimal',
+            controlsContainer: '#controls',
+            setInputValidity: true
+        });
+    </script>
+    <script>
+        unindent = (s) => {
+            let lines = s.split('\n')
+            while (lines[0].trim() === '') {
+                lines = lines.slice(1);
+            }
+            while (lines[lines.length-1].trim() === '') {
+                lines = lines.slice(0, -1);
+            }
+            const minLeftIndent = lines.slice(0, lines.length-2).map(line => line == '' ? 99999 : line.match(/^\s*/)[0].length);
+            const minIndent = Math.min(...minLeftIndent);
+            return lines.map(line => line.slice(minIndent)).join('\n');
+        };
+        document.getElementById('code-sample').innerHTML = '<pre><code class="language-javascript">' + unindent(document.getElementById('base-script').innerHTML) + '</code></pre>';
+
+        const eventsLog = document.getElementById('events-log');
+        const methodTests = document.getElementById('method-tests');
+
+        function logEvent(type, data) {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'block result log';
+            logEntry.innerHTML = `
+                <strong>${type}</strong> - ${new Date().toLocaleTimeString()}
+                <pre><code class="language-json">${JSON.stringify(data, null, 2)}</code></pre>
+            `;
+            eventsLog.appendChild(logEntry);
+            Prism.highlightElement(logEntry.querySelector('pre code'));
+        }
+
+        csvMapper.addEventListener('mappingFailed', (event) => {
+            logEvent('mappingFailed', event.detail);
+        });
+
+        csvMapper.addEventListener('transformationFail', (event) => {
+            logEvent('transformationFail', event.detail);
+        });
+
+        csvMapper.addEventListener('validationFail', (event) => {
+            logEvent('validationFail', event.detail);
+        });
+
+        csvMapper.addEventListener('validationFailed', (event) => {
+            logEvent('validationFailed', event.detail);
+        });
+
+        csvMapper.addEventListener('afterRead', (event) => {
+            logEvent('afterRead', event.detail);
+        });
+
+        csvMapper.addEventListener('afterMap', (event) => {
+            logEvent('afterMap', {
+                rowCount: event.detail.rows.length,
+                hasCsv: !!event.detail.csv
+            });
+        });
+
+        // Test validation methods
+        function runMethodTests() {
+            console.log('Mapping change detected');
+            methodTests.innerHTML = '';
+
+            // Test 1: validateRequiredColumns() method
+            const validation = csvMapper.validateRequiredColumns();
+            const test1 = document.createElement('div');
+            test1.className = validation.isValid ? 'result success' : 'result error';
+            test1.innerHTML = `
+                <h3>✅ validateRequiredColumns() Test</h3>
+                <p><strong>Valid:</strong> ${validation.isValid}</p>
+                <p><strong>Missing Required:</strong> ${validation.missingRequired.join(', ') || 'None'}</p>
+            `;
+            methodTests.appendChild(test1);
+        }
+
+        // Run tests when mapping changes
+        csvMapper.addEventListener('mappingChange', runMethodTests);
+
+        // Create sample CSV for testing
+        const sampleCsv = document.getElementById('sample-csv').innerHTML.trim();
+
+        // Create a blob and simulate file upload for testing
+        setTimeout(() => {
+            const blob = new Blob([sampleCsv], { type: 'text/csv' });
+            const file = new File([blob], 'test.csv', { type: 'text/csv' });
+
+            // Create a new FileList
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+
+            // Set the files and trigger change event
+            document.getElementById('csv-file').files = dataTransfer.files;
+            document.getElementById('csv-file').dispatchEvent(new Event('change'));
+
+            logEvent('Test Setup', { message: 'Sample CSV loaded automatically for testing' });
+        }, 10);
+
+        console.log('🧪 Validation test page loaded');
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.min.js" integrity="sha256-AjM0J5XIbiB590BrznLEgZGLnOQWrt62s3BEq65Q/I0=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/toolbar/prism-toolbar.min.js" integrity="sha256-NSwb7O0HrDJcC+2SASgGuCP8+tdpIhqnzLTZkGRJRCk=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/show-language/prism-show-language.min.js" integrity="sha256-Iy5p6AvgpCeFkznsN5PvgtzOzu1zpWLGfVtPF5H9akk=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/match-braces/prism-match-braces.min.js" integrity="sha256-+5ZWEZo03rdvJF2quCewrodzNhHu9aDLctMge3kzqYU=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js" integrity="sha256-qf3MqHLzDh4qqAnc9QVmqjEWBA4CfzP1YwRFbfNfpnE=" crossorigin="anonymous"></script>
+  </body>
+</html>

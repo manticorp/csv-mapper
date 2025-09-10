@@ -1,0 +1,31 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "jsdom",
+  "roots": ["<rootDir>/src", "<rootDir>/tests"],
+  "testMatch": [
+    "**/__tests__/**/*.test.ts",
+    "**/?(*.)+(spec|test).ts"
+  ],
+  "testPathIgnorePatterns": [
+    "/node_modules/",
+    "/tests/e2e/"
+  ],
+  "transform": {
+    "^.+\\.ts$": ["ts-jest", {
+      "useESM": true
+    }]
+  },
+  "moduleFileExtensions": ["ts", "js", "json"],
+  "setupFilesAfterEnv": ["<rootDir>/tests/setup.ts"],
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/**/*.d.ts",
+    "!src/**/index.ts"
+  ],
+  "coverageDirectory": "coverage",
+  "coverageReporters": ["text", "lcov", "html"],
+  "moduleNameMapper": {
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "extensionsToTreatAsEsm": [".ts"]
+}

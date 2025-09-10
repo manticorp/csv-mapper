@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CSV Mapper - Line Break Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        textarea { width: 100%; height: 200px; font-family: monospace; }
+        table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+        th { background-color: #f2f2f2; }
+        .line-break { background-color: #ffe6e6; }
+    </style>
+</head>
+<body>
+    <h1>CSV Parser - Line Break Test</h1>
+    
+    <div class="test-section">
+        <h2>Test CSV with Line Breaks</h2>
+        <textarea id="csvInput">id,name,description,notes
+1,John Doe,"Product A
+with multiple lines
+of description","Simple note"
+2,Jane Smith,"Product B","This is a note
+that spans
+multiple lines"
+3,Bob Johnson,Product C,"Single line note"
+4,Alice Brown,"Another product
+with line breaks","Another
+multi-line
+note"</textarea>
+        <br><br>
+        <button onclick="testParser()">Test Parser</button>
+    </div>
+
+    <div class="test-section">
+        <h2>File Input Test</h2>
+        <input type="file" id="csvFile" accept=".csv">
+        <div id="controls"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Parse Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script type="module">
+        import CsvMapper, { CsvParser } from '../dist/csv-mapper.esm.js';
+
+        window.testParser = function() {
+            const csvText = document.getElementById('csvInput').value;
+            const results = document.getElementById('results');
+            
+            try {
+                // Test direct parser
+                const parsed = CsvParser.parseCSV(csvText);
+                
+                let html = '<h3>Parsed Data:</h3>';
+                html += `<p><strong>Headers:</strong> ${parsed.headers.join(', ')}</p>`;
+                html += `<p><strong>Rows:</strong> ${parsed.rows.length}</p>`;
+                html += `<p><strong>Dialect:</strong> sep="${parsed.dialect.separator}", quote="${parsed.dialect.enclosure}", escape="${parsed.dialect.escape}"</p>`;
+                
+                html += '<table><tr>';
+                parsed.headers.forEach(h => html += `<th>${h}</th>`);
+                html += '</tr>';
+                
+                parsed.rows.forEach(row => {
+                    html += '<tr>';
+                    parsed.headers.forEach(h => {
+                        const value = row[h] || '';
+                        const hasLineBreak = value.includes('\n');
+                        const displayValue = value.replace(/\n/g, '\\n');
+                        html += `<td class="${hasLineBreak ? 'line-break' : ''}">${displayValue}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</table>';
+                
+                // Test round-trip conversion
+                html += '<h3>Round-trip Test:</h3>';
+                const csvOutput = parsed.rows.map(row => 
+                    CsvParser.toCsvRow(parsed.headers.map(h => row[h] || ''))
+                ).join('\n');
+                html += '<textarea readonly style="height: 100px;">' + 
+                        parsed.headers.join(',') + '\n' + csvOutput + '</textarea>';
+                
+                results.innerHTML = html;
+                
+            } catch (error) {
+                results.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        };
+
+        // Initialize CSV mapper for file input
+        const mapper = new CsvMapper('#csvFile', {
+            columns: [
+                { name: 'id', title: 'ID' },
+                { name: 'name', title: 'Name' },
+                { name: 'description', title: 'Description' },
+                { name: 'notes', title: 'Notes' }
+            ],
+            showUserControls: true,
+            controlsContainer: '#controls'
+        });
+
+        mapper.addEventListener('afterMap', (e) => {
+            console.log('CSV processed:', e.detail);
+        });
+    </script>
+</body>
+</html>

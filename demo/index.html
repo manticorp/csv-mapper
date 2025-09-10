@@ -1,31 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CSV Mapper • Vanilla JS</title>
-  </head>
-  <body>
-    <form method="POST" id="form">
-      <input id="csv" type="file" accept=".csv">
-      <input id="map" type="hidden">
-      <div id="remapping-controls"></div>
-      <button type="submit">Submit</button>
-    </form>
-    <script type="module">
-      import CsvMapper from "./../dist/csv-mapper.esm.js";
-      const options = {
-        headers: true,
-        remap: true,
-        showUserControls: true,
-        columns: ['id', 'name', 'sku', 'qty']
-      };
-      const fileMap = new CsvMapper('#csv', options);
-
-      document.getElementById('form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        console.log(e);
-      });
-    </script>
-  </body>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>CSV Mapper - Demos</title>
+		<link href="css/main.css" rel="stylesheet">
+	</head>
+	<body>
+		<section class="section">
+			<div class="container">
+				<h1 class="title">CsvMapper Demos</h1>
+				<ul>
+					<li><a href="simple.html">Simple Example</a></li>
+					<li><a href="advanced.html">Advanced Example</a> - showing all config options available</li>
+					<li><a href="validation.html">Advanced Validation Features</a></li>
+					<li><a href="mapping-modes.html">Mapping Modes Demo</a> - CSV→Config vs Config→CSV</li>
+					<li><a href="many-to-many-mapping.html">Many-to-Many Mapping Demo</a> - One CSV column to multiple target columns</li>
+				</ul>
+			</div>
+		</section>
+		<script src="../dist/csv-mapper.umd.min.js"></script>
+	</body>
 </html>

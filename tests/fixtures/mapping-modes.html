@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Mapping Modes Demo</title>
+    <link href="css/main.css" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/df2086130b.js" crossorigin="anonymous"></script>
+    <style>
+    </style>
+</head>
+<body>
+    <section class="section">
+        <div class="container content">
+            <h1>CsvMapper - Mapping Modes Demo</h1>
+
+            <p>This demo showcases the two mapping modes available in CsvMapper:</p>
+            <ul>
+                <li><strong>CSV → Config</strong> (default): Map CSV columns to your configured schema</li>
+                <li><strong>Config → CSV</strong>: Map your configured schema to CSV columns</li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container content">
+            <h3>Standard Mode: CSV → Config</h3>
+            <p>The traditional way - your CSV headers appear on the left, and you choose which configured columns they map to on the right.</p>
+
+            <div class="mode-switch block" id="mapper1switch">
+                <label>Current Mode: CSV → Config</label>
+                <button class="button is-small" id="switch-mode" onclick="toggleMode(1)">Switch to Config → CSV</button>
+            </div>
+
+            <div class="form-group">
+                <div class="file">
+                    <label class="file-label" for="csvFile1">
+                        <input class="file-input" id="csvFile1" type="file" accept=".csv" required>
+                        <span class="file-cta">
+                        <span class="file-icon">
+                            <i class="fas fa-upload"></i>
+                        </span>
+                        <span class="file-label"> Choose a file… </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div id="controls1"></div>
+            <div id="result1" class="results"></div>
+        </div>
+    </section>
+    <section class="section">
+        <div class="container content">
+            <h3>Sample CSV Data</h3>
+            <p>You can copy this sample data and save it as a .csv file to test:</p>
+            <pre>user_id,full_name,email_address,phone_number,status
+1,John Doe,john@example.com,555-1234,active
+2,Jane Smith,jane@example.com,555-5678,inactive
+3,Bob Johnson,bob@example.com,555-9012,active</pre>
+        </div>
+    </section>
+
+    <!-- Include the UMD build -->
+    <script src="../../dist/csv-mapper.umd.min.js"></script>
+
+    <script>
+        const columnSpecs = [
+            {
+                name: 'product_id',
+                title: 'product_id',
+                required: true,
+                validate: /^\d+$/
+            },
+            'name',
+            'price',
+            'category',
+            'stock'
+        ];
+
+        // Demo 1: CSV → Config (default mode)
+        const mapper1 = new CsvMapper('#csvFile1', {
+            columns: columnSpecs,
+            controlsContainer: '#controls1',
+            mappingMode: 'csvToConfig',
+        });
+
+        // Event listeners for results
+        mapper1.addEventListener('afterMap', (event) => {
+            const { rows, csv } = event.detail;
+            document.getElementById('result1').innerHTML = `
+                <h4>Mapped Data (CSV → Config):</h4>
+                <pre>${JSON.stringify(rows.slice(0, 3), null, 2)}${rows.length > 3 ? '\n... and ' + (rows.length - 3) + ' more rows' : ''}</pre>
+                <h4>Generated CSV:</h4>
+                <pre>${csv}</pre>
+            `;
+        });
+
+        function toggleMode(which) {
+            let mapper;
+            switch (which) {
+                case 1:
+                    mapper = mapper1;
+                    break;
+            }
+            if (mapper) {
+                mapper.opts.mappingMode = mapper.opts.mappingMode === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
+                mapper._renderControls();
+                document.getElementById(`mapper${which}switch`).innerHTML = `
+                    <label>Current Mode: ${mapper.opts.mappingMode === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV'}</label>
+                    <button class="button is-small" onclick="toggleMode(${which})">Switch to ${mapper.opts.mappingMode === 'csvToConfig' ? 'Config → CSV' : 'CSV → Config'}</button>
+                `;
+            }
+        }
+
+        // Add some helpful console logging
+        console.log('CsvMapper Mapping Modes Demo loaded');
+        console.log('Demo 1 (CSV → Config):', mapper1);
+    </script>
+</body>
+</html>

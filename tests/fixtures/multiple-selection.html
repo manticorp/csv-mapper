@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Multiple Selection Demo</title>
+    <link href="css/main.css" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/df2086130b.js" crossorigin="anonymous"></script>
+    <style>
+    </style>
+</head>
+<body>
+    <section class="section">
+        <div class="container content">
+            <h1>CsvMapper - Multiple Selection Demo</h1>
+            <p>This demo showcases the <code>allowMultipleSelection</code> option:</p>
+            <ul>
+                <li><strong>allowMultipleSelection: true</strong> - Enables many-to-many mapping with &lt;select multiple&gt; in CSV → Config mode</li>
+                <li><strong>allowMultipleSelection: false</strong> - Traditional single selection mode</li>
+            </ul>
+        </div>
+        <div class="container content box">
+            <h3>Demo 1: Multiple Selection Enabled</h3>
+            <div class="block">
+                <label>
+                    <input type="checkbox" id="multipleMode1" checked>
+                    Allow Multiple Selection
+                </label>
+                <div class="current-mode">
+                    <span id="currentMode1">CSV → Config</span>
+                    <button class="button is-small" id="switchMode1">Switch to Config → CSV</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="file">
+                    <label class="file-label" for="csvFile1">
+                        <input class="file-input" id="csvFile1" type="file" accept=".csv" required>
+                        <span class="file-cta">
+                        <span class="file-icon">
+                            <i class="fas fa-upload"></i>
+                        </span>
+                        <span class="file-label"> Choose a file… </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div class="block" id="controls1"></div>
+            <div class="block">
+                <h3>Csv Result</h3>
+                <pre id="csv-output1"></pre>
+            </div>
+        </div>
+        <div class="container content box">
+            <h3>Demo 2: Single Selection Only</h3>
+            <div class="block">
+                <label>
+                    <input type="checkbox" id="multipleMode2">
+                    Allow Multiple Selection
+                </label>
+                <div class="current-mode">
+                    <span id="currentMode2">CSV → Config</span>
+                    <button class="button is-small" id="switchMode2">Switch to Config → CSV</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="file">
+                    <label class="file-label" for="csvFile2">
+                        <input class="file-input" id="csvFile2" type="file" accept=".csv" required>
+                        <span class="file-cta">
+                        <span class="file-icon">
+                            <i class="fas fa-upload"></i>
+                        </span>
+                        <span class="file-label"> Choose a file… </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div class="block" id="controls2"></div>
+            <div class="block">
+                <h3>Csv Result</h3>
+                <pre id="csv-output2"></pre>
+            </div>
+        </div>
+    </section>
+
+
+    <section class="section">
+        <div class="container content">
+            <h3>Sample CSV Data</h3>
+            <p>You can copy this sample data and save it as a .csv file to test:</p>
+            <div class="sample-data">product_id,name,price,category,stock
+1,Laptop Computer,999.99,Electronics,5
+2,Office Chair,199.99,Furniture,12
+3,Desk Lamp,49.99,Electronics,8</div>
+        </div>
+    </section>
+    <script src="../../dist/csv-mapper.umd.js"></script>
+
+    <script type="module">
+        // Configuration
+        const columns = [
+            { name: 'product_id', required: true },
+            { name: 'name', required: true },
+            { name: 'price' },
+            { name: 'category', allowDuplicates: true },
+            { name: 'stock' }
+        ];
+
+        // Initialize both demos
+        let mapper1, mapper2;
+        let mode1 = 'csvToConfig', mode2 = 'csvToConfig';
+
+        function initDemo1() {
+            const allowMultiple = document.getElementById('multipleMode1').checked;
+            if (!mapper1) {
+                mapper1 = new CsvMapper('#csvFile1', {
+                    columns,
+                    controlsContainer: '#controls1',
+                    allowMultipleSelection: allowMultiple,
+                    mappingMode: mode1
+                });
+
+                mapper1.addEventListener('mappingSuccess', (event) => {
+                    console.log('Demo 1 - Mapped Data:', event.detail);
+                });
+
+                mapper1.addEventListener('afterMap', (event) => {
+                    console.log('Demo 1 - afterMap Data:', event.detail);
+                    document.getElementById('csv-output1').innerText = event.detail.csv;
+                });
+            }
+            mapper1.opts.allowMultipleSelection = allowMultiple;
+            mapper1.opts.mappingMode = mode1;
+            mapper1.redraw();
+        }
+
+        function initDemo2() {
+            const allowMultiple = document.getElementById('multipleMode2').checked;
+            if (!mapper2) {
+                mapper2 = new CsvMapper('#csvFile2', {
+                    columns,
+                    controlsContainer: '#controls2',
+                    allowMultipleSelection: allowMultiple,
+                    mappingMode: mode1
+                });
+
+                mapper2.addEventListener('mappingSuccess', (event) => {
+                    console.log('Demo 2 - Mapped Data:', event.detail);
+                });
+
+                mapper2.addEventListener('afterMap', (event) => {
+                    console.log('Demo 2 - afterMap Data:', event.detail);
+                    document.getElementById('csv-output2').innerText = event.detail.csv;
+                });
+            }
+            mapper2.opts.allowMultipleSelection = allowMultiple;
+            mapper2.opts.mappingMode = mode1;
+            mapper2.redraw();
+        }
+
+        // Initialize demos
+        initDemo1();
+        initDemo2();
+
+        // Event listeners for demo 1
+        document.getElementById('multipleMode1').addEventListener('change', initDemo1);
+        document.getElementById('switchMode1').addEventListener('click', () => {
+            mode1 = mode1 === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
+            document.getElementById('currentMode1').textContent = mode1 === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV';
+            document.getElementById('switchMode1').textContent = mode1 === 'csvToConfig' ? 'Switch to Config → CSV' : 'Switch to CSV → Config';
+            initDemo1();
+        });
+
+        // Event listeners for demo 2
+        document.getElementById('multipleMode2').addEventListener('change', initDemo2);
+        document.getElementById('switchMode2').addEventListener('click', () => {
+            mode2 = mode2 === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
+            document.getElementById('currentMode2').textContent = mode2 === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV';
+            document.getElementById('switchMode2').textContent = mode2 === 'csvToConfig' ? 'Switch to Config → CSV' : 'Switch to CSV → Config';
+            initDemo2();
+        });
+
+        console.log('CsvMapper Multiple Selection Demo loaded');
+    </script>
+</body>
+</html>

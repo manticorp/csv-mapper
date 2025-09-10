@@ -1,65 +1,89 @@
-import { CsvDialect, ColumnSpec, ValidationRule, CsvMapperOptions, ParseOptions, ParseResult, DetectDialectOptions, MappedOutput, MappedRow, UIRenderer } from './types.js';
-export { DefaultUIRenderer } from './ui/renderer/default.js';
-export { MinimalUIRenderer } from './ui/renderer/minimal.js';
+import { CsvDialect, ColumnSpec, ValidationResult, ValidationType, ValidationRule, CsvMapperOptions, ParseOptions, ParseResult, DetectDialectOptions, MappedOutput, UIRenderer, CsvParser, CsvMapping } from './types.js';
+import { DataTransformer } from './transform/dataTransformer.js';
+import { DefaultUIRenderer } from './ui/renderer/default.js';
+import { Csv } from './csv/csv.js';
 export * from './types.js';
 export default class CsvMapper extends EventTarget {
-    input: HTMLInputElement;
+    input: HTMLInputElement | null;
     opts: CsvMapperOptions;
     columns: ColumnSpec[];
     controlsEl: HTMLElement | null;
-    mapping: Record<string, string>;
+    mapping: CsvMapping;
     headers: string[];
-    rows: MappedRow[];
     dialect: CsvDialect;
     uiRenderer: UIRenderer;
+    parser: CsvParser;
+    isValid: boolean;
+    csv: Csv | null;
+    transformer: DataTransformer;
     /**
      * @param fileInput selector or element for <input type=file>
      * @param options configuration options
      */
-    constructor(fileInput: HTMLInputElement | string, options?: CsvMapperOptions);
+    constructor(fileInput: HTMLInputElement | string | CsvMapperOptions, options?: CsvMapperOptions);
     destroy(): void;
-    getMapping(): Record<string, string>;
-    setMapping(map: Record<string, string> | null): void;
+    getMapping(): CsvMapping;
+    setMapping(map: Record<string, string | string[]> | null): void;
     getHeaders(): string[];
-    getRawRows(): MappedRow[];
+    getRawRows(): Record<string, string>[];
     getDialect(): CsvDialect;
+    redraw(): void;
+    setColumns(columns?: (ColumnSpec | string)[]): void;
+    resetColumnMapping(): void;
+    addColumnMappings(mappings: Record<string, string>[]): void;
+    addColumnMapping(csvHeader: string, configColumn: string): void;
+    removeColumnMapping(csvHeader: string, configColumn: string): void;
+    clearColumnMapping(csvHeader: string): void;
+    getColumnMappings(csvHeader: string): string[];
+    getAllMappings(): Record<string, string[]>;
+    setUiRenderer(uiRenderer: UIRenderer | string | null | undefined): void;
+    setCsv(csvText: string): this;
+    mapCsv(csvText?: string): MappedOutput | false;
+    getMappedResult(): MappedOutput | void;
+    _resolveUiRenderer(uiRenderer: UIRenderer | string | null | undefined): UIRenderer;
+    _onFileChange(): Promise<void>;
+    private _beforeParseCsv;
+    private _afterParseCsv;
+    private _autoMap;
     _validateMapping(): {
         isValid: boolean;
         missingRequired: string[];
+        mappedTargets: string[];
     };
     _onMappingChange(): void;
+    _mappingChangeEvent(): void;
     /**
      * Checks if all required columns are mapped
      * @returns Object with validation status and missing required columns
      */
-    validateMapping(): {
+    validateRequiredColumns(): {
         isValid: boolean;
         missingRequired: string[];
+        mappedTargets: string[];
     };
-    _onFileChange(): Promise<void>;
-    /**
-     * Validates that all required columns are mapped
-     * @returns Array of missing required column names
-     */
-    _validateRequiredColumns(): string[];
+    addMapping(csvHeader: string, configColumn: string): void;
+    removeMapping(csvHeader: string, configColumn: string): void;
+    clearMapping(csvHeader: string): void;
+    getMappedColumns(csvHeader: string): string[];
+    getAllMappedTargets(): string[];
+    getSimpleMapping(): Record<string, string>;
+    getReverseMapping(): Record<string, string>;
     _produceOutput(): MappedOutput;
-    _renderControls(): void;
-    private _getValidationStatus;
+    _renderControls(validation?: ValidationResult): void;
+    private _getMappingStatus;
     _banner(text: string): string;
-    _autoMap(): void;
-    _matchScore(srcHeader: string, spec: ColumnSpec): number;
     _resolveNode(ref: HTMLElement | string | null): HTMLElement | null;
     _autoinsertContainer(): HTMLDivElement | null;
-    static parseCSV(text: string, { headers, separator, enclosure, escape, guessMaxLines }?: ParseOptions): ParseResult;
-    static _parseWithDialect(text: string, sep: string, quote: string, esc: string | null): string[][];
-    static detectDialect(text: string, { separator, enclosure, escape, guessMaxLines }?: DetectDialectOptions): CsvDialect;
-    static _mode(arr: number[]): number | null;
-    static _escRe(s: string): string;
+    static parseCSV(text: string, options?: ParseOptions): ParseResult;
+    static detectDialect(text: string, options?: DetectDialectOptions): CsvDialect;
     static toCsvRow(arr: any[], sep?: string, quote?: string, esc?: string | null): string;
-    static normalize(s: any): string;
-    static similarity(a: string, b: string): number;
-    static _validate(v: any, validator: RegExp | ((value: any) => boolean) | ValidationRule): boolean;
-    static _ensureStyles(): void;
+    static _validateValue(fieldValue: any, validator: RegExp | ((value: any) => boolean) | ValidationRule | ValidationType): boolean;
+    static dateFormatToRegex(format: string, { anchors, allowUppercaseMD, }?: {
+        anchors?: boolean | undefined;
+        allowUppercaseMD?: boolean | undefined;
+    }): RegExp;
+    static _validateRegex(value: any, regex: RegExp): boolean;
     static escape(s: any): string;
+    static DefaultUIRenderer: typeof DefaultUIRenderer;
 }
 //# sourceMappingURL=csvMapper.d.ts.map

@@ -1,4 +1,4 @@
-import { UIRenderer, UIRenderOptions, ValidationResult } from './../../types.js';
+import { UIRenderer, UIRenderOptions, MappingResult } from './types.js';
 
 /**
  * Minimal UI renderer with a simpler, more compact interface
@@ -20,7 +20,7 @@ export class MinimalUIRenderer implements UIRenderer {
       return;
     }
 
-    const { headers, columnSpecs, currentMapping, validation, rowCount, dialect } = options;
+    const { headers, columnSpecs, currentMapping, mappingResult: validation, rowCount, dialect } = options;
 
     // Simple compact layout
     container.innerHTML = `
@@ -44,7 +44,7 @@ export class MinimalUIRenderer implements UIRenderer {
     this.mappingChangeCallback = callback;
   }
 
-  updateValidation(validation: ValidationResult): void {
+  updateMapping(validation: MappingResult): void {
     if (!this.container) return;
     
     const badge = this.container.querySelector('.minimal-validation-badge');
@@ -63,7 +63,7 @@ export class MinimalUIRenderer implements UIRenderer {
     this.container.innerHTML = `<div class="minimal-note">${this._escape(message)}</div>`;
   }
 
-  private _renderValidationBadge(validation: ValidationResult): string {
+  private _renderValidationBadge(validation: MappingResult): string {
     const { isValid, missingRequired } = validation;
     const className = isValid ? 'minimal-validation-badge valid' : 'minimal-validation-badge invalid';
     const text = isValid ? '✓' : `⚠ ${missingRequired.length}`;

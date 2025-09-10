@@ -1,0 +1,10 @@
+numbers,booleans,strings,dates
+1,TRUE,hello,2023-01-01
+2,FALSE,world,2023-01-02
+3,1,foo,2023-01-03
+4,0,bar,2023-01-04
+1.2345,yes,baz,2023-01-05
+-100,no,1.234,2023-01-05
+"1,234,567",null,"some long string perhaps
+with line breaks",2023-01-05
+"1,234,567",,1.234,2023-01-05

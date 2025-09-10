@@ -17,6 +17,14 @@ It allows you to:
 * Column validation
 * Normalisation (e.g. boolean to => 0/1)
 * Intercept upload and upload edited/parsed/mapped csv instead
+* **Robust CSV parsing** with support for multiline fields using bundled PapaParse
+* **Advanced dialect detection** for separators, quotes, and escape characters
+* **Proper handling of line breaks** within quoted CSV fields
+* **No external dependencies** - PapaParse is bundled with the library
+
+## Installation
+
+The library is completely self-contained with PapaParse bundled inside. No additional dependencies required!
 
 # Usage
 
@@ -71,22 +79,32 @@ const mapper = new CsvMapper('#csv', {
     controlsContainer: '#remapping-controls', // selector | element | null
     autoThreshold: 0.8,
     allowUnmappedTargets: true,
-    beforeParse: (e) => {}, // see below
-    beforeMap: (e) => {}, // see below
-    afterMap: (e) => {}, // see below
-});
-
-mapper.addEventListener('beforeParse', (e) => {
-    console.log('CSV string', e.detail.text);
-});
-
-mapper.addEventListener('beforeMap', (e) => {
-    console.log('CSV rows', e.detail.rows);
-});
-
-mapper.addEventListener('afterMap', (e) => {
-    console.log('Mapped rows:', e.detail.rows);
-    console.log('CSV (if remap:true):', e.detail.csv);
 });
 </script>
 ```
+
+## CSV Parsing Capabilities
+
+The library now uses PapaParse for robust CSV parsing that properly handles:
+
+### Multiline Fields
+```csv
+product_id,name,description
+1,"Multi-line
+Product Name
+With Breaks","Long description here"
+2,"Another Product","Simple description"
+```
+
+### Various Quote Styles
+- Standard double quotes: `"field with spaces"`
+- Escaped quotes: `"field with ""quotes"" inside"`
+- Mixed content: `"field with, comma and ""quotes"""`
+
+### Different Separators and Dialects
+- Comma-separated (CSV): `field1,field2,field3`
+- Semicolon-separated: `field1;field2;field3`
+- Tab-separated (TSV): `field1	field2	field3`
+- Pipe-separated: `field1|field2|field3`
+
+The library automatically detects the dialect or you can specify it explicitly.

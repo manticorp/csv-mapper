@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Simple Browser Example</title>
+    <link href="css/main.css" rel="stylesheet">
+</head>
+<body>
+    <section class="section">
+        <div class="container content">
+            <h1>Simple CsvMapper Example</h1>
+
+            <p>Check the console for some extra output.</p>
+
+            <input type="file" id="csvFile" accept=".csv" />
+            <div id="result"></div>
+        </div>
+    </section>
+
+    <!-- Include the UMD build -->
+    <script src="../dist/csv-mapper.umd.min.js"></script>
+
+    <script>
+        // CsvMapper is available as a global object
+        const fileInput = document.getElementById('csvFile');
+        const result = document.getElementById('result');
+        const options = {
+            columns: [
+                'id',
+                { name: 'name', title: 'Name' },
+                { name: 'email', title: 'Email', defaultValue: 'a@b.com', validate: 'email' },
+                { name: 'maybe_missing', title: 'Maybe Missing', validate: 'boolean' }
+            ]
+        };
+
+        // Create mapper with simple configuration
+        const mapper = new CsvMapper(fileInput, options);
+
+        // Listen for when CSV is processed
+        mapper.addEventListener('mapped', (event) => {
+            const rows = event.detail.rows;
+            result.innerHTML = `
+                <h3>Processed ${rows.length} rows:</h3>
+                <pre>${JSON.stringify(rows, null, 2)}</pre>
+            `;
+        });
+
+        // Static method usage
+        const csvText = `name,not_used,email,maybe_missing
+        John,Not Used Data,john@example.com,true
+        Mary,Not Used Data,mary@example.com,false
+        Nefarious Bill,Not Used Data,"not a valid email@example.com"
+        `
+        .trim().split("\n").map(a => a.trim()).join("\n");
+        const parsed = CsvMapper.parseCSV(csvText);
+        console.log('Parsed:', parsed);
+
+        const mapperWithNoUi = new CsvMapper(options);
+        console.log('No UI result: ', mapperWithNoUi.mapCsv(csvText));
+    </script>
+</body>
+</html>

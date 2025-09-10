@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duplicate Headers Test</title>
+    <link href="css/main.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Duplicate Headers Test</h1>
+        
+        <div class="content">
+            <p>This test demonstrates CSV output with duplicate column headers when using configToCsv mode with allowMultipleSelection.</p>
+        </div>
+
+        <div class="columns">
+            <div class="column">
+                <h2 class="subtitle">Input CSV</h2>
+                <textarea id="inputCsv" class="textarea" rows="8">product_id,name,price,category
+1,Widget A,10.99,Electronics
+2,Widget B,15.50,Electronics
+3,Gadget C,8.75,Home</textarea>
+            </div>
+            
+            <div class="column">
+                <h2 class="subtitle">Configuration</h2>
+                <input type="file" id="csvInput" style="display: none;">
+                <div id="mapper-container"></div>
+                <button id="generateBtn" class="button is-primary">Generate CSV with Duplicate Headers</button>
+            </div>
+            
+            <div class="column">
+                <h2 class="subtitle">Output CSV</h2>
+                <textarea id="outputCsv" class="textarea" rows="8" readonly></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script src="../dist/csv-mapper.umd.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputCsv = document.getElementById('inputCsv');
+            const outputCsv = document.getElementById('outputCsv');
+            const generateBtn = document.getElementById('generateBtn');
+            const mapperContainer = document.getElementById('mapper-container');
+
+            // Create CSV mapper with configToCsv mode and allowMultipleSelection
+            const mapper = new CsvMapper('#csvInput', {
+                mappingMode: 'configToCsv',
+                allowMultipleSelection: true,
+                remap: true,
+                controlsContainer: '#mapper-container'
+            });
+
+            // Define configuration columns
+            mapper.columns = [
+                { name: 'id', title: 'Product ID', required: true },
+                { name: 'title', title: 'Product Name', required: true },
+                { name: 'cost', title: 'Price', required: true },
+                { name: 'type1', title: 'Category 1', required: true },
+                { name: 'type2', title: 'Category 2', required: false }
+            ];
+
+            // Render the mapper
+            // mapperContainer.appendChild(mapper); // Remove this line
+
+            // Load initial CSV
+            mapper.mapCsv(inputCsv.value);
+
+            // Set up mappings to demonstrate duplicate headers
+            // Map 'category' CSV column to both 'type1' and 'type2' config columns
+            setTimeout(() => {
+                // Set mappings: category -> both type1 and type2
+                const categorySelect = mapper.querySelector('select[data-csv-header="category"]');
+                if (categorySelect && categorySelect.multiple) {
+                    // Select multiple options
+                    Array.from(categorySelect.options).forEach(option => {
+                        if (option.value === 'type1' || option.value === 'type2') {
+                            option.selected = true;
+                        }
+                    });
+                    
+                    // Trigger change event
+                    categorySelect.dispatchEvent(new Event('change'));
+                }
+                
+                // Map other columns normally
+                const productIdSelect = mapper.querySelector('select[data-csv-header="product_id"]');
+                if (productIdSelect) {
+                    productIdSelect.value = 'id';
+                    productIdSelect.dispatchEvent(new Event('change'));
+                }
+                
+                const nameSelect = mapper.querySelector('select[data-csv-header="name"]');
+                if (nameSelect) {
+                    nameSelect.value = 'title';
+                    nameSelect.dispatchEvent(new Event('change'));
+                }
+                
+                const priceSelect = mapper.querySelector('select[data-csv-header="price"]');
+                if (priceSelect) {
+                    priceSelect.value = 'cost';
+                    priceSelect.dispatchEvent(new Event('change'));
+                }
+            }, 500);
+
+            generateBtn.addEventListener('click', function() {
+                try {
+                    // Re-run the mapping to get latest output
+                    const result = mapper.mapCsv(inputCsv.value);
+                    if (result && result.csv) {
+                        outputCsv.value = result.csv;
+                        console.log('Generated CSV:', result.csv);
+                        console.log('Mapping:', mapper.mapping);
+                    } else {
+                        outputCsv.value = 'No CSV generated - check mappings';
+                        console.log('No CSV output, result:', result);
+                    }
+                } catch (error) {
+                    outputCsv.value = 'Error: ' + error.message;
+                    console.error('Error generating CSV:', error);
+                }
+            });
+
+            inputCsv.addEventListener('input', function() {
+                mapper.mapCsv(inputCsv.value);
+            });
+        });
+    </script>
+</body>
+</html>

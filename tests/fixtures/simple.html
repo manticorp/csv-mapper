@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Many-to-Many Mapping Demo</title>
+    <link href="css/main.css" rel="stylesheet">
+</head>
+<body>
+    <input type="file">
+    <pre id="mapped-csv"></pre>
+    <script src="../../dist/csv-mapper.umd.js"></script>
+    <script>
+        const mapper = new CsvMapper('input', {
+            mappingMode: 'configToCsv',
+            setInputValidity: true,
+            columns: [
+                {name: 'id', required: true},
+                {name: 'name', required: true},
+                {name: 'active', required: true, validate: 'boolean', defaultValue: true},
+                {name: 'category', allowMultiple: true}
+            ],
+            allowMultiple: true
+        });
+
+        mapper.addEventListener('afterRead', (e) => {
+            console.log('afterRead', e.detail);
+        });
+        mapper.addEventListener('beforeParseCsv', (e) => {
+            console.log('beforeParseCsv', e.detail);
+        });
+        mapper.addEventListener('afterParseCsv', (e) => {
+            console.log('afterParseCsv', e.detail);
+        });
+        mapper.addEventListener('beforeMap', (e) => {
+            console.log('beforeMap', e.detail);
+        });
+        mapper.addEventListener('afterMap', (e) => {
+            console.log('afterMap', e.detail);
+        });
+        mapper.addEventListener('mappingChange', (e) => {
+            console.log('mappingChange', e.detail);
+        });
+        mapper.addEventListener('mappingFailed', (e) => {
+            console.log('mappingFailed', e.detail);
+        });
+        mapper.addEventListener('mappingSuccess', (e) => {
+            console.log('mappingSuccess', e.detail);
+        });
+        mapper.addEventListener('afterValidation', (e) => {
+            console.log('afterValidation', e.detail);
+        });
+        mapper.addEventListener('transformationFail', (e) => {
+            console.log('transformationFail', e.detail);
+        });
+        mapper.addEventListener('validationFail', (e) => {
+            console.log('validationFail', e.detail);
+        });
+        mapper.addEventListener('validationFailed', (e) => {
+            console.log('validationFailed', e.detail);
+        });
+        mapper.addEventListener('validationSuccess', (e) => {
+            console.log('validationSuccess', e.detail);
+        });
+
+        mapper.addEventListener('afterMap', e => document.getElementById('mapped-csv').innerText = e.detail.csv);
+    </script>
+</body>
+</html>

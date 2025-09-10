@@ -1,39 +1,55 @@
+import { Csv } from "./csv/csv";
+import { TransformOptions } from "./transform/dataTransformer.clean";
 export interface CsvDialect {
     separator: string;
     enclosure: string;
     escape: string | null;
 }
+export type CsvMapping = Record<string, string | string[]>;
 export interface ColumnSpec {
     name: string;
     title?: string;
+    outputHeader?: string;
+    defaultValue?: any;
     required?: boolean;
     allowDuplicates?: boolean;
+    allowMultiple?: boolean;
     match?: RegExp | ((header: string) => boolean);
     transform?: (value: any, row: Record<string, any>) => any;
     validate?: RegExp | ((value: any) => boolean) | ValidationRule;
     validationMessage?: string;
+    validationSuffix?: string;
 }
+export type ValidationType = 'number' | 'boolean' | 'email' | 'phone' | 'tel' | 'telephone' | 'date' | 'time' | 'datetime';
 export interface ValidationRule {
-    type: 'number' | 'boolean';
+    type: ValidationType;
     min?: number;
     max?: number;
+    format?: string;
 }
-export interface ValidationResult {
+export interface MappingResult {
     isValid: boolean;
     missingRequired: string[];
     mappedColumns: string[];
 }
 export interface MappedOutput {
-    mappedRows: MappedRow[];
+    data: Csv;
     csv: string | null;
-}
-export interface MappedRow extends Record<string, any> {
-    __errors__?: ValidationError[];
+    validation: ValidationResult;
 }
 export interface ValidationError {
+    row: Record<string, string>;
+    rowIndex: number;
     field: string;
     message: string;
     value: any;
+}
+export interface ValidationResult {
+    errors: ValidationError[];
+    totalRows: number;
+    errorRows: number;
+    totalErrors: number;
+    errorsByField: Record<string, number>;
 }
 export interface ParseOptions {
     headers?: boolean;
@@ -45,6 +61,7 @@ export interface ParseOptions {
 export interface ParseResult {
     headers: string[];
     rows: Record<string, any>[];
+    rawRows: string[][];
     dialect: CsvDialect;
 }
 export interface DetectDialectOptions {
@@ -53,13 +70,42 @@ export interface DetectDialectOptions {
     escape?: string | null | undefined;
     guessMaxLines?: number;
 }
+export interface CsvParser {
+    /**
+     * Parse CSV text with auto-detection or explicit dialect options
+     * @param text CSV text to parse
+     * @param options Parsing options including dialect preferences
+     * @returns Parsed result with headers, rows, and detected dialect
+     */
+    parseCSV(text: string, options?: ParseOptions): ParseResult;
+    /**
+     * Detect CSV dialect (separator, enclosure, escape) from sample text
+     * @param text CSV text to analyze
+     * @param options Dialect detection options
+     * @returns Detected CSV dialect
+     */
+    detectDialect(text: string, options?: DetectDialectOptions): CsvDialect;
+    /**
+     * Convert array of values to CSV row string
+     * @param arr Array of values to convert
+     * @param sep Field separator (default: comma)
+     * @param quote Enclosure character (default: double quote)
+     * @param esc Escape character (null for quote doubling)
+     * @returns CSV row string
+     */
+    toCsvRow(arr: any[], sep?: string, quote?: string, esc?: string | null): string;
+}
 export interface UIRenderOptions {
     headers: string[];
     columnSpecs: ColumnSpec[];
     currentMapping: Record<string, string>;
+    fullMapping: Record<string, string | string[]>;
+    mappingResult: MappingResult;
     validation: ValidationResult;
     rowCount: number;
     dialect: CsvDialect;
+    mappingMode: MappingMode;
+    allowMultipleSelection?: boolean;
 }
 export interface UIRenderer {
     /**
@@ -70,28 +116,31 @@ export interface UIRenderer {
      * Set up event listeners for mapping changes
      * @param onMappingChange Callback when user changes a mapping
      */
-    onMappingChange(callback: (sourceHeader: string, targetColumn: string) => void): void;
+    onMappingChange(callback: (sourceHeader: string, targetColumn: string) => CsvMapping): void;
     /**
      * Update the validation display
      */
-    updateValidation(validation: ValidationResult): void;
+    updateMapping(validation: MappingResult): void;
     /**
      * Clean up resources when destroyed
      */
     destroy(): void;
     /**
+     * Call reset to definitely redraw all next time.
+     */
+    reset(): void;
+    /**
      * Show a message/banner (optional)
      */
     showMessage?(message: string): void;
 }
+export type MappingMode = 'csvToConfig' | 'configToCsv';
 export interface CsvMapperOptions {
     separator?: string;
     enclosure?: string;
     escape?: string;
     guessMaxLines?: number;
-    outputSeparator?: string | null;
-    outputEnclosure?: string | null;
-    outputEscape?: string | null;
+    output?: Partial<TransformOptions>;
     headers?: boolean;
     remap?: boolean;
     showUserControls?: boolean;
@@ -101,9 +150,10 @@ export interface CsvMapperOptions {
     autoThreshold?: number;
     allowUnmappedTargets?: boolean;
     setInputValidity?: boolean;
-    uiRenderer?: UIRenderer | null;
-    beforeParse?: ((text: string) => string | void) | null;
-    beforeMap?: ((rows: Record<string, any>[]) => Record<string, any>[] | void) | null;
-    afterMap?: ((rows: Record<string, any>[], csv: string | null) => void) | null;
+    parser?: CsvParser | null;
+    uiRenderer?: UIRenderer | string | null;
+    mappingMode?: MappingMode;
+    allowMultipleSelection?: boolean;
+    allowMultiple?: boolean;
 }
 //# sourceMappingURL=types.d.ts.map

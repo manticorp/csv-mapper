@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Many-to-Many Mapping Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .mode-controls {
+            margin: 10px 0;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Many-to-Many Mapping Test</h1>
+    
+    <div class="test-section">
+        <h2>Sample Data & Configuration</h2>
+        <p>This demo tests the many-to-many mapping functionality where:</p>
+        <ul>
+            <li>Multiple config columns can map to the same CSV column</li>
+            <li>CSV columns can map to multiple config columns</li>
+            <li>UI shows multiple mappings clearly</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Mode Controls</h2>
+        <div class="mode-controls">
+            <button onclick="switchMode('csvToConfig')">Switch to CSV → Config Mode</button>
+            <button onclick="switchMode('configToCsv')">Switch to Config → CSV Mode</button>
+            <button onclick="loadSampleData()">Load Sample Data</button>
+            <button onclick="showMappingData()">Show Current Mapping</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>File Input & Mapping Interface</h2>
+        <input type="file" id="csvFile" accept=".csv">
+        <div id="mappingContainer"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Debug Information</h2>
+        <pre id="debugOutput"></pre>
+    </div>
+
+    <!-- Load CSV Mapper -->
+    <script src="/dist/csv-mapper.umd.js"></script>
+    
+    <script>
+        let csvMapper;
+        
+        // Configuration with some columns allowing duplicates
+        const columnConfig = [
+            { name: 'id', title: 'Product ID', required: true },
+            { name: 'name', title: 'Product Name', required: true },
+            { name: 'description', title: 'Description', allowDuplicates: true },
+            { name: 'category', title: 'Category' },
+            { name: 'price', title: 'Price', required: true },
+            { name: 'tag1', title: 'Tag 1', allowDuplicates: true },
+            { name: 'tag2', title: 'Tag 2', allowDuplicates: true },
+            { name: 'metadata', title: 'Metadata', allowDuplicates: true }
+        ];
+
+        // Sample CSV data that can demonstrate many-to-many mappings
+        const sampleCsvData = `product_code,product_name,info,category_name,cost,keywords,extra_data
+P001,Widget A,Great widget for testing,Electronics,19.99,tech gadget,color:blue
+P002,Widget B,Another testing widget,Electronics,29.99,tech gadget premium,color:red
+P003,Tool X,Professional tool,Tools,49.99,professional durable,weight:2kg`;
+
+        function initializeCsvMapper() {
+            csvMapper = new CsvMapper('#csvFile', {
+                columns: columnConfig,
+                showUserControls: true,
+                controlsContainer: '#mappingContainer',
+                mappingMode: 'csvToConfig'
+            });
+
+            // Add event listeners for debugging
+            csvMapper.addEventListener('mappingChange', (event) => {
+                updateDebugOutput('Mapping changed:', event.detail.mapping);
+            });
+
+            csvMapper.addEventListener('mappingSuccess', (event) => {
+                updateDebugOutput('Mapping success:', event.detail);
+            });
+
+            csvMapper.addEventListener('mappingFailed', (event) => {
+                updateDebugOutput('Mapping failed:', event.detail);
+            });
+        }
+
+        function switchMode(mode) {
+            if (csvMapper) {
+                csvMapper.opts.mappingMode = mode;
+                csvMapper._onMappingChange(); // Trigger re-render
+                updateDebugOutput(`Switched to ${mode} mode`);
+            }
+        }
+
+        function loadSampleData() {
+            if (csvMapper) {
+                csvMapper.mapCsv(sampleCsvData);
+                updateDebugOutput('Sample data loaded');
+            }
+        }
+
+        function showMappingData() {
+            if (csvMapper) {
+                const mapping = csvMapper.getMapping();
+                const allMappings = csvMapper.getAllMappings();
+                updateDebugOutput('Current mappings:', {
+                    internal: mapping,
+                    all: allMappings
+                });
+            }
+        }
+
+        function updateDebugOutput(message, data = null) {
+            const debugEl = document.getElementById('debugOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const output = data ? `${message}\n${JSON.stringify(data, null, 2)}` : message;
+            debugEl.textContent = `[${timestamp}] ${output}\n\n${debugEl.textContent}`;
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCsvMapper();
+            updateDebugOutput('CSV Mapper initialized');
+        });
+    </script>
+</body>
+</html>
