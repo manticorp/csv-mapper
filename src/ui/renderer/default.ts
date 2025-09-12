@@ -1,5 +1,7 @@
-import { debug, logger, classSafeString } from '../../helpers.js';
+import { debug, logger, classSafeString, invertMapping } from '../../helpers.js';
 import { UIRenderer, UIRenderOptions, MappingResult, ColumnSpec, ValidationResult, CsvMapping } from '../../types.js';
+
+export type MappingChangeCallback = (sourceHeader: string, targetColumn: string|string[]) => CsvMapping;
 
 /**
  * Default HTML-based UI renderer for CSV Mapper
@@ -7,7 +9,7 @@ import { UIRenderer, UIRenderOptions, MappingResult, ColumnSpec, ValidationResul
  */
 export class DefaultUIRenderer implements UIRenderer {
   private container: HTMLElement | null = null;
-  private mappingChangeCallback: ((sourceHeader: string, targetColumn: string) => CsvMapping) | null = null;
+  private mappingChangeCallback: MappingChangeCallback | null = null;
   private currentOptions: UIRenderOptions | null = null;
   private uniqid : string;
   private hasInitialRender: boolean = false;
@@ -56,7 +58,7 @@ export class DefaultUIRenderer implements UIRenderer {
   }
 
   reRender(container: HTMLElement, options: UIRenderOptions): void {
-    logger.group('Re-Rendering');
+    logger.groupCollapsed('Re-Rendering');
     this.container = container;
     this.currentOptions = options;
     container.dataset.mappingMode = options.mappingMode;
@@ -102,7 +104,7 @@ export class DefaultUIRenderer implements UIRenderer {
       this.reRender(container, options);
       return;
     }
-    logger.group('Rendering');
+    logger.groupCollapsed('Rendering');
     this.container = container;
     this.currentOptions = options;
 
@@ -150,7 +152,7 @@ export class DefaultUIRenderer implements UIRenderer {
     logger.groupEnd('Rendering');
   }
 
-  onMappingChange(callback: (sourceHeader: string, targetColumn: string) => CsvMapping): void {
+  onMappingChange(callback: MappingChangeCallback): void {
     this.mappingChangeCallback = callback;
   }
 
@@ -201,17 +203,21 @@ export class DefaultUIRenderer implements UIRenderer {
 
   private _renderMappingTable(options: UIRenderOptions): string {
     debug('_renderMappingTable', {options});
+    const fullMapping = invertMapping(options.fullMapping);
     if (options.mappingMode === 'configToCsv') {
       // Config columns on the left, CSV headers on the right
       return options.columnSpecs.map(spec => {
-        let currentMapping = options.currentMapping[spec.name] || '';
-        const selectOptions = this._generateCsvHeaderOptions(options.headers, currentMapping, options.currentMapping, options.allowMultipleSelection);
+        let currentMapping = fullMapping[spec.name] || '';
+        const selectOptions = this._generateCsvHeaderOptions(options.headers, currentMapping, fullMapping, options.allowMultipleSelection);
         this.lastDrawnMap = options.fullMapping;
+        const tooltip = spec.description ? ` title="${this._escape(spec.description)}"` : '';
+        const comment = spec.comment ? `\n<div class="csvm-comment">${this._escape(spec.comment)}</div>` : '';
+        const multiple = spec.allowDuplicates ? ' multiple' : '';
         return `
           <tr>
-            <td><strong>${this._escape(spec.title || spec.name)}${spec.required ? ' *' : ''}</strong></td>
+            <td><strong${tooltip}>${this._escape(spec.title || spec.name)}${spec.required ? ' *' : ''}</strong>${comment}</td>
             <td>
-              <select id="${this.uniqid}-${classSafeString(spec.name)}" name="${classSafeString(spec.name)}" data-src="${this._escape(spec.name)}">
+              <select id="${this.uniqid}-${classSafeString(spec.name)}" name="${classSafeString(spec.name)}" data-src="${this._escape(spec.name)}"${tooltip}${multiple}>
                 ${selectOptions}
               </select>
             </td>
@@ -222,7 +228,7 @@ export class DefaultUIRenderer implements UIRenderer {
       // CSV headers on the left, config columns on the right (standard mode)
       return options.headers.map(header => {
         const currentMapping = options.fullMapping[header] || '';
-        const selectOptions = this._generateSelectOptions(options.columnSpecs, currentMapping, options.currentMapping, options.allowMultipleSelection);
+        const selectOptions = this._generateSelectOptions(options.columnSpecs, currentMapping, fullMapping, options.allowMultipleSelection);
 
         // Check if this CSV header has multiple mappings (beyond the simple mapping)
         const allMappings = this._getFullMappingsForHeader(header, options);
@@ -232,6 +238,7 @@ export class DefaultUIRenderer implements UIRenderer {
 
         const multipleAttr = options.allowMultipleSelection ? 'multiple' : '';
         const selectClass = options.allowMultipleSelection ? 'csvm-multi-select' : '';
+
         this.lastDrawnMap = options.fullMapping;
         return `
           <tr>
@@ -248,11 +255,14 @@ export class DefaultUIRenderer implements UIRenderer {
     }
   }
 
-  private _generateSelectOptions(columnSpecs: ColumnSpec[], currentTargetName: string|string[], allMappings: Record<string, string>, allowMultipleSelection?: boolean): string {
+  private _generateSelectOptions(columnSpecs: ColumnSpec[], currentTargetName: string|string[], allMappings: CsvMapping, allowMultipleSelection?: boolean): string {
     // Count how many times each target is used
     const usageCounts = new Map<string, number>();
     Object.values(allMappings).forEach(target => {
-      if (target) usageCounts.set(target, (usageCounts.get(target) || 0) + 1);
+      if (target) {
+        target = Array.isArray(target) ? target : [target];
+        target.forEach(subtarget => usageCounts.set(subtarget, (usageCounts.get(subtarget) || 0) + 1));
+      };
     });
 
     if (typeof currentTargetName === 'string') {
@@ -271,29 +281,30 @@ export class DefaultUIRenderer implements UIRenderer {
       const disabled = !canUse ? 'disabled' : '';
       const selected = isCurrentTarget ? 'selected' : '';
       const title = this._escape(spec.title || spec.name);
-      const multiIndicator = (allowMultipleSelection || spec.allowDuplicates) ? ' (multi)' : '';
       const requiredIndicator = (spec.required && canUse) ? ' *' : '';
 
-      return `<option class="${spec.required ? 'required' : ''}" value="${this._escape(spec.name)}" ${selected} ${disabled}>${title}${multiIndicator}${requiredIndicator}</option>`;
+      return `<option class="${spec.required ? 'required' : ''}" value="${this._escape(spec.name)}" ${selected} ${disabled}>${title}${requiredIndicator}</option>`;
     });
 
     return [ignoreOption, ...columnOptions].join('');
   }
 
-  private _generateCsvHeaderOptions(csvHeaders: string[], currentTargetHeader: string, allMappings: Record<string, string>, allowMultipleSelection?: boolean): string {
+  private _generateCsvHeaderOptions(csvHeaders: string[], currentTargetHeader: string|string[], allMappings: CsvMapping, allowMultipleSelection?: boolean): string {
+    if (!Array.isArray(currentTargetHeader)) currentTargetHeader = [currentTargetHeader];
     // In configToCsv mode, multiple config columns can map to the same CSV header
     debug({csvHeaders, currentTargetHeader, allMappings})
 
     const ignoreOption = '<option value="">— Ignore —</option>';
 
     const headerOptions = csvHeaders.map(header => {
-      const isCurrentTarget = currentTargetHeader === header;
+      const isCurrentTarget = currentTargetHeader.includes(header);
 
       // If allowMultipleSelection is false, check if this header is already used by another config column
       let disabled = '';
       if (!allowMultipleSelection) {
-        const headerAlreadyUsed = Object.entries(allMappings).some(([configCol, csvHeader]) =>
-          csvHeader === header && configCol !== Object.keys(allMappings).find(k => allMappings[k] === currentTargetHeader)
+        const headerAlreadyUsed = Object.entries(allMappings).some(([configCol, csvHeaders]) => {
+            return csvHeaders.includes(header);
+          }
         );
         if (headerAlreadyUsed && !isCurrentTarget) {
           disabled = 'disabled';
@@ -316,64 +327,24 @@ export class DefaultUIRenderer implements UIRenderer {
     const selectElements = this.container.querySelectorAll('select[data-src]') as NodeListOf<HTMLSelectElement>;
 
     selectElements.forEach(select => {
-      select.addEventListener('change', () => {
+      select.addEventListener('change', (event) => {
         let sourceHeader: string|null = select.getAttribute('data-src');
-        debug('Select changed', {sourceHeader, value: select.value, selectedOptions: Array.from(select.selectedOptions).map(o => o.value)});
+        const selectedOptions = Array.from(select.selectedOptions).map(o => o.value);
+        debug('Select changed', {
+          sourceHeader,
+          value: select.value,
+          selectedOptions
+        });
+          if (!sourceHeader) return;
 
         if (this.container?.dataset.mappingMode === 'configToCsv') {
           // In configToCsv mode: data-src=configColumn, value=csvHeader
-          const configColumn = sourceHeader;
-          const newCsvHeader = select.value;
-
-          if (!newCsvHeader && configColumn && this.currentOptions) {
-            // User is clearing the mapping - find the currently mapped CSV header
-            const currentCsvHeader = this.currentOptions.currentMapping[configColumn];
-            if (currentCsvHeader && this.mappingChangeCallback) {
-              // Only use special removal format if multiple selection is enabled
-              if (this.currentOptions.allowMultipleSelection) {
-                this.lastDrawnMap = this.mappingChangeCallback(`${currentCsvHeader}|${configColumn}`, '');
-              } else {
-                this.lastDrawnMap = this.mappingChangeCallback(currentCsvHeader, '');
-              }
-            }
-          } else if (newCsvHeader && configColumn && this.mappingChangeCallback) {
-            // User is setting a new mapping
-            // First clear any existing mapping for this config column
-            if (this.currentOptions) {
-              const currentCsvHeader = this.currentOptions.currentMapping[configColumn];
-              if (currentCsvHeader && currentCsvHeader !== newCsvHeader) {
-                // Remove the old mapping first
-                if (this.currentOptions.allowMultipleSelection) {
-                  this.lastDrawnMap = this.mappingChangeCallback(`${currentCsvHeader}|${configColumn}`, '');
-                } else {
-                  this.lastDrawnMap = this.mappingChangeCallback(currentCsvHeader, '');
-                }
-              }
-            }
-            // Add the new mapping
-            this.lastDrawnMap = this.mappingChangeCallback(newCsvHeader, configColumn);
+          if (this.mappingChangeCallback) {
+            this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, selectedOptions);
           }
         } else {
-          // Standard csvToConfig mode
-          if (sourceHeader && this.mappingChangeCallback) {
-            if (select.multiple && this.currentOptions?.allowMultipleSelection) {
-              // Handle multiple selection - get all selected values
-              const selectedValues = Array.from(select.selectedOptions).map(option => option.value).filter(v => v);
-
-              // Clear existing mappings for this CSV header first
-              this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, '');
-
-              // Add each selected mapping
-              selectedValues.forEach(targetColumn => {
-                if (targetColumn && this.mappingChangeCallback) {
-                  this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, targetColumn);
-                }
-              });
-            } else {
-              // Single selection mode
-              const targetColumn = select.value;
-              this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, targetColumn ?? '');
-            }
+          if (this.mappingChangeCallback) {
+            this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, selectedOptions);
           }
         }
       });
@@ -421,6 +392,9 @@ export class DefaultUIRenderer implements UIRenderer {
         border-bottom: 1px solid #ddd;
         font-weight: 600;
         color: #333;
+      }
+      .csvm-comment {
+        font-size: 0.8rem;
       }
       .csvm-card-b { padding: 0; }
       .csvm-table {

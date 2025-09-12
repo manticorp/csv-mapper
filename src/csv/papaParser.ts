@@ -18,16 +18,16 @@ export class PapaParser implements CsvParser {
    * @param options Parsing options including dialect preferences
    * @returns Parsed result with headers, rows, and detected dialect
    */
-  parseCSV(text: string, { headers = true, separator = '', enclosure = '', escape = '', guessMaxLines = 25 }: ParseOptions = {}): ParseResult {
+  parseCSV(text: string, { headers = true, delimiter = '', quoteChar = '', escapeChar = '' }: ParseOptions = {}): ParseResult {
     const config: Papa.ParseConfig = {
       header: false,
       skipEmptyLines: true,
       dynamicTyping: false
     };
 
-    if (separator) config.delimiter = separator;
-    if (enclosure) config.quoteChar = enclosure;
-    if (escape) config.escapeChar = escape;
+    if (delimiter) config.delimiter = delimiter;
+    if (quoteChar) config.quoteChar = quoteChar;
+    if (escapeChar) config.escapeChar = escapeChar;
 
     const result = Papa.parse(text, config);
 
@@ -46,14 +46,14 @@ export class PapaParser implements CsvParser {
         headers: [],
         rows: [],
         rawRows: [],
-        dialect: { separator: separator || ',', enclosure: enclosure || '"', escape: escape || null }
+        dialect: { separator: delimiter || ',', enclosure: quoteChar || '"', escape: escapeChar || null }
       };
     }
 
     const dialect: CsvDialect = {
-      separator: result.meta.delimiter || separator || ',',
-      enclosure: enclosure || '"',
-      escape: escape || null
+      separator: result.meta.delimiter || delimiter || ',',
+      enclosure: quoteChar || '"',
+      escape: escapeChar || null
     };
 
     if (headers) {
@@ -78,12 +78,8 @@ export class PapaParser implements CsvParser {
    * @param options Dialect detection options
    * @returns Detected CSV dialect
    */
-  detectDialect(text: string, { separator = null, enclosure = null, escape = null, guessMaxLines = 25 }: DetectDialectOptions = {}): CsvDialect {
+  detectDialect(text: string, { delimiter: separator = null, quoteChar: enclosure = null, escapeChar: escape = null }: DetectDialectOptions = {}): CsvDialect {
     let sampleText = text;
-    if (guessMaxLines > 0) {
-      const lines = text.split(/\r\n|\n|\r/);
-      sampleText = lines.slice(0, guessMaxLines).join('\n');
-    }
 
     const config: Papa.ParseConfig = {
       header: false,

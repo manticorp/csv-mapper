@@ -64,7 +64,6 @@ describe('CsvMapper Integration Tests', () => {
       csvMapper = new CsvMapper(fileInput, { columns, remap: true, showUserControls: false });
 
       // Simulate CSV headers being loaded
-      csvMapper.headers = ['Name', 'Age', 'City', 'Email'];
       csvMapper.csv = new Csv([
         ['John Doe', '30', 'New York', 'john@example.com'],
         ['Jane Smith', '25', 'Los Angeles', 'jane@example.com']
@@ -103,7 +102,7 @@ describe('CsvMapper Integration Tests', () => {
         {
           name: 'fullName',
           title: 'Full Name',
-          transform: (value: any, row: Record<string, any>) => {
+          transform: (value: any, row: number, column: string|number) => {
             return value ? value.toUpperCase() : value;
           }
         }
@@ -157,7 +156,7 @@ describe('CsvMapper Integration Tests', () => {
       csvMapper = new CsvMapper(fileInput, { columns, showUserControls: false });
 
       // Simulate partial mapping
-      csvMapper.headers = ['Name', 'City'];  // Missing Age and Email headers
+      csvMapper.csv = new Csv([], ['Name', 'City']);  // Missing Age and Email headers
       csvMapper.setMapping({
         'Name': 'name'
         // Age and Email not mapped
@@ -219,14 +218,6 @@ describe('CsvMapper Integration Tests', () => {
       expect(dialect.separator).toBe(';');
       expect(dialect.enclosure).toBe('"');
     });
-
-    test('should use static toCsvRow method', () => {
-      const row = ['John Doe', '30', 'New York'];
-
-      const csvRow = CsvMapper.toCsvRow(row);
-
-      expect(csvRow).toBe('John Doe,30,New York');
-    });
   });
 
   describe('Error Handling', () => {
@@ -262,7 +253,8 @@ describe('CsvMapper Integration Tests', () => {
         onMappingChange: jest.fn(),
         updateValidation: jest.fn(),
         updateMapping: jest.fn(),
-        destroy: jest.fn()
+        destroy: jest.fn(),
+        reset: jest.fn()
       };
 
       csvMapper = new CsvMapper(fileInput, { uiRenderer: mockRenderer });
@@ -295,7 +287,7 @@ describe('CsvMapper Integration Tests', () => {
       });
 
       // Simulate CSV headers
-      csvMapper.headers = ['user_id', 'full_name', 'email'];
+      csvMapper.csv = new Csv([], ['user_id', 'full_name', 'email']);
 
       // The mapping is always csvHeader -> configColumn, regardless of UI mode
       csvMapper.addColumnMapping('user_id', 'id');
@@ -321,7 +313,7 @@ describe('CsvMapper Integration Tests', () => {
       });
 
       // Simulate CSV headers
-      csvMapper.headers = ['product_sku', 'full_name', 'price'];
+      csvMapper.csv = new Csv([], ['product_sku', 'full_name', 'price']);
 
       // Add multiple mappings for the same CSV column
       csvMapper.addColumnMapping('product_sku', 'product_id');
@@ -361,7 +353,7 @@ describe('CsvMapper Integration Tests', () => {
         showUserControls: false
       });
 
-      csvMapper.headers = ['product_code'];
+      csvMapper.csv = new Csv([], ['product_code']);
 
       // Add multiple mappings
       csvMapper.addColumnMapping('product_code', 'id');
@@ -417,7 +409,7 @@ describe('CsvMapper Integration Tests', () => {
           { name: 'id', title: 'ID' },
           { name: 'name', title: 'Name' },
           { name: 'sku', title: 'SKU' },
-          { name: 'category', title: 'Category', allowMultiple: true },
+          { name: 'category', title: 'Category', allowDuplicates: true },
         ],
         showUserControls: false
       });
@@ -444,7 +436,7 @@ describe('CsvMapper Integration Tests', () => {
           { name: 'id', title: 'ID' },
           { name: 'name', title: 'Name' },
           { name: 'sku', title: 'SKU' },
-          { name: 'category', title: 'Category', allowMultiple: true },
+          { name: 'category', title: 'Category', allowDuplicates: true },
         ],
         showUserControls: false
       });

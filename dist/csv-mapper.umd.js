@@ -4,18 +4,96 @@
     (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.CsvMapper = factory());
 })(this, (function () { 'use strict';
 
-    // @ts-ignore - This will be replaced by Rollup
-    const limitString = (str, length, rest = '...') => {
-        if (str.length <= length)
-            return str;
-        return str.slice(0, length - rest.length) + rest;
+    // --- tiny tokenizer (Unicode-aware where supported) ---
+    const WORD_RE = (() => {
+        try {
+            // letters (with marks) or numbers
+            return /\p{L}[\p{L}\p{M}\p{N}]*|\p{N}+/gu;
+        }
+        catch {
+            // fallback for older JS engines
+            return /[A-Za-z0-9]+/g;
+        }
+    })();
+    function words(input) {
+        const s = String(input)
+            .trim()
+            // unify common separators
+            .replace(/[_\-.]+/g, ' ')
+            // split camelCase and HTTPResponse -> HTTP Response
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+        return s.match(WORD_RE) || [];
+    }
+    const lower = (s) => s.toLowerCase();
+    const upper = (s) => s.toUpperCase();
+    const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    // --- case converters ---
+    function camelCase(str) {
+        const w = words(str).map(lower);
+        return w.map((t, i) => (i ? cap(t) : t)).join('');
+    }
+    function pascalCase(str) {
+        return words(str).map(cap).join('');
+    }
+    function titleCase(str, { smallWords = true } = {}) {
+        const small = new Set([
+            'a', 'an', 'and', 'as', 'at', 'but', 'by', 'en', 'for', 'if', 'in',
+            'of', 'on', 'or', 'the', 'to', 'vs', 'via'
+        ]);
+        const w = words(str);
+        return w
+            .map((t, i) => smallWords && i > 0 && i < w.length - 1 && small.has(t.toLowerCase())
+            ? t.toLowerCase()
+            : cap(t))
+            .join(' ');
+    }
+    /**
+     * snake_case
+     */
+    function snakeCase(str) {
+        return words(str).map(lower).join('_');
+    }
+    /**
+     * SCREAMING_SNAKE_CASE
+     */
+    function screamingSnakeCase(str) {
+        return words(str).map(upper).join('_');
+    }
+    /**
+     * kebab-case
+     */
+    function kebabCase(str) {
+        return words(str).map(lower).join('-');
+    }
+    /**
+     * Separate words with spaces
+     */
+    function separateWords(str) {
+        // keeps natural capitalization (e.g., "XML HTTP Request")
+        return words(str).join(' ');
+    }
+    /**
+     * Separate words with spaces
+     */
+    function ascii(str) {
+        // convert accented characters to their ASCII equivalents
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+    var Str = {
+        words,
+        lower,
+        upper,
+        cap,
+        camelCase,
+        pascalCase,
+        titleCase,
+        snakeCase,
+        screamingSnakeCase,
+        kebabCase,
+        separateWords,
+        ascii
     };
-    const normalize = (s) => String(s || '').toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim();
-    const classSafeString = (str) => str.replace(/[^a-zA-Z0-9-_]+/g, '-');
-    const nop = (...args) => { };
-    const logger = { log: nop, group: nop, groupCollapsed: nop, groupEnd: nop, info: nop, debug: nop, error: nop, warn: nop, table: nop };
-    const debug = nop;
-    const debugTable = nop;
 
     class CsvRow {
         constructor(index, data, headers = null) {
@@ -469,18 +547,361 @@
         }
     }
 
+    var DatePreset;
+    (function (DatePreset) {
+        /** example: 2005-08-15T15:52:01+0000 */
+        DatePreset["ISO8601"] = "iso8601";
+        /** example: Mon, 15 Aug 05 15:52:01 +0000*/
+        DatePreset["RFC822"] = "rfc822";
+        /** example: Monday, 15-Aug-05 15:52:01 UTC */
+        DatePreset["RFC850"] = "rfc850";
+        /** example: Mon, 15 Aug 05 15:52:01 +0000 */
+        DatePreset["RFC1036"] = "rfc1036";
+        /** example: Mon, 15 Aug 2005 15:52:01 +0000 */
+        DatePreset["RFC1123"] = "rfc1123";
+        /** example: Sat, 30 Apr 2016 17:52:13 GMT */
+        DatePreset["RFC7231"] = "rfc7231";
+        /** example: Mon, 15 Aug 2005 15:52:01 +0000 */
+        DatePreset["RFC2822"] = "rfc2822";
+        /** example: 2005-08-15T15:52:01+00:00 */
+        DatePreset["W3C"] = "w3c";
+    })(DatePreset || (DatePreset = {}));
+    class DateFormatter {
+        static validateFormat(value, format) {
+            const regex = DateFormatter.dateFormatToRegex(format);
+            return regex.test(String(value));
+        }
+        static dateFormatToRegex(format, { anchors = true, allowUppercaseMD = true, } = {}) {
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            switch (format.toLowerCase()) {
+                case DatePreset.ISO8601:
+                    return /^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/;
+                case DatePreset.RFC822:
+                    return /^(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s)?(?:0?[1-9]|[12]\d|3[01])\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s(?:\d{2}|\d{4})\s(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\s(?:[+-](?:[01]\d|2[0-3])[0-5]\d|UT|GMT|[ECMP][SD]T|[A-IK-Z])$/i;
+                case DatePreset.RFC850:
+                    return /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),\s(0[1-9]|[12]\d|3[01])-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\sGMT$/i;
+                case DatePreset.RFC1036:
+                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(?:0?[1-9]|[12]\d|3[01])\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{2}\s(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\s(?:GMT|[PMCE][SD]T|[+-](?:[01]\d|2[0-3])[0-5]\d)$/i;
+                case DatePreset.RFC1123:
+                    // 4-digit year; allows GMT/UT or numeric offset
+                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(0[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\s(?:GMT|UT|[+-](?:[01]\d|2[0-3])[0-5]\d)$/i;
+                case DatePreset.RFC7231:
+                    // IMF-fixdate (HTTP-date) — must be GMT
+                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(0[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\sGMT$/i;
+                case DatePreset.RFC2822:
+                    // Optional weekday; 4-digit year; seconds optional; numeric offset or common (obs-zone) names
+                    return /^(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s)?(0?[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\s(?:[+-](?:[01]\d|2[0-3])[0-5]\d|UT|GMT|[ECMP][SD]T|[A-IK-Z])$/i;
+                case DatePreset.W3C:
+                    // W3C-DTF (subset of ISO 8601): strict 'T', optional fractional seconds, 'Z' or ±HH:MM
+                    return /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+            }
+            const map = {
+                // Years
+                'X': '[-+]\\d{4}\\d*', // at least 4-digit year with - for BCE and + for CE, e.g. +0012, -1234, +1066, +2025
+                'Y': '-?\\d{4}\\d*', // at least 4-digit year, e.g. 0012, -1234, 1066, 2025
+                'y': '-?\\d+',
+                // Months
+                'F': '(?:(?i)January|February|March|April|May|June|July|August|September|October|November|December)',
+                'M': '(?:(?i)Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)',
+                'm': '(?:0[1-9]|1[0-2])', // 01-12
+                'n': '(?:[1-9]|1[0-2])', // 1-12 (no leading 0)
+                // Days
+                'l': '(?:(?i)Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)',
+                'D': '(?:(?i)Mon|Tue|Wed|Thu|Fri|Sat|Sun)',
+                'd': '(?:0[1-9]|[12]\\d|3[01])', // 01-31
+                'j': '(?:[1-9]|[12]\\d|3[01])', // 1-31 (no leading 0)
+                'S': '(?:(?i)st|nd|rd|th)', // 1st, 2nd, 3rd, 4th, etc.
+                // Hours / minutes / seconds
+                'a': '(am|pm)',
+                'A': '(AM|PM)',
+                'h': '(?:[0][0-9]|1[0-2])', // 00-12
+                'H': '(?:[01]\\d|2[0-3])', // 00-23
+                'g': '(?:\\d|1[0-2])', // 0-12
+                'G': '(?:\\d|1\\d|2[0-3])', // 0-23
+                'i': '[0-5]\\d', // 00-59
+                's': '[0-5]\\d', // 00-59
+                // Misc handy ones if you need them later:
+                'U': '\\d+', // seconds since Unix epoch
+            };
+            if (allowUppercaseMD) {
+                map['M'] = map['m'];
+                map['D'] = map['d'];
+            }
+            let out = '';
+            for (let i = 0; i < format.length; i++) {
+                const ch = format[i];
+                // Backslash escapes the next character (PHP-style)
+                if (ch === '\\') {
+                    i++;
+                    if (i < format.length)
+                        out += esc(format[i]);
+                    continue;
+                }
+                out += map[ch] || esc(ch);
+            }
+            return new RegExp((anchors ? '^' : '') + out + (anchors ? '$' : ''));
+        }
+        static format(value, format) {
+            if (!value)
+                return '';
+            let date;
+            if (value instanceof Date) {
+                date = value;
+            }
+            else {
+                date = new Date(value);
+                if (isNaN(date.getTime())) {
+                    // Try parsing common formats if default parsing fails
+                    date = DateFormatter.parseFlexibleDate(String(value));
+                    if (isNaN(date.getTime())) {
+                        return String(value); // Return original if unparseable
+                    }
+                }
+            }
+            // Handle predefined format shortcuts
+            switch (format.toLowerCase()) {
+                case DatePreset.ISO8601:
+                    return date.toISOString();
+                case DatePreset.RFC822:
+                    return date.toUTCString().replace('GMT', '+0000');
+                case DatePreset.RFC850:
+                    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const dayName = days[date.getUTCDay()];
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const month = months[date.getUTCMonth()];
+                    const year = String(date.getUTCFullYear()).slice(-2);
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                    return `${dayName}, ${day}-${month}-${year} ${hours}:${minutes}:${seconds} GMT`;
+                case DatePreset.RFC1036:
+                case DatePreset.RFC1123:
+                case DatePreset.RFC2822:
+                    return date.toUTCString();
+                case DatePreset.RFC7231:
+                    return date.toUTCString();
+                case DatePreset.W3C:
+                    return date.toISOString();
+            }
+            // Handle PHP-style format strings
+            return DateFormatter.formatWithPhpStyle(date, format);
+        }
+        static parseFlexibleDate(dateStr) {
+            // Common date formats to try
+            const formats = [
+                // MM/DD/YYYY or DD/MM/YYYY
+                /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/,
+                // YYYY/MM/DD or YYYY-MM-DD
+                /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,
+                // DD.MM.YYYY
+                /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/,
+                // YYYY.MM.DD
+                /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/
+            ];
+            for (const regex of formats) {
+                const match = dateStr.match(regex);
+                if (match) {
+                    const [, part1, part2, part3] = match;
+                    // Try different interpretations
+                    const attempts = [
+                        // YYYY-MM-DD or YYYY/MM/DD
+                        new Date(parseInt(part1), parseInt(part2) - 1, parseInt(part3)),
+                        // MM/DD/YYYY (US format)
+                        new Date(parseInt(part3), parseInt(part1) - 1, parseInt(part2)),
+                        // DD/MM/YYYY (European format)
+                        new Date(parseInt(part3), parseInt(part2) - 1, parseInt(part1))
+                    ];
+                    for (const attempt of attempts) {
+                        if (!isNaN(attempt.getTime())) {
+                            return attempt;
+                        }
+                    }
+                }
+            }
+            return new Date(NaN);
+        }
+        static formatWithPhpStyle(date, format) {
+            const formatMap = {
+                // Day
+                'd': () => String(date.getDate()).padStart(2, '0'), // 01-31
+                'D': () => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()], // Mon-Sun
+                'j': () => String(date.getDate()), // 1-31
+                'l': () => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()], // Sunday-Saturday
+                'N': () => String(date.getDay() || 7), // 1-7 (Monday=1)
+                'S': () => {
+                    const day = date.getDate();
+                    if (day >= 11 && day <= 13)
+                        return 'th';
+                    switch (day % 10) {
+                        case 1: return 'st';
+                        case 2: return 'nd';
+                        case 3: return 'rd';
+                        default: return 'th';
+                    }
+                },
+                'w': () => String(date.getDay()), // 0-6 (Sunday=0)
+                'z': () => {
+                    const start = new Date(date.getFullYear(), 0, 1);
+                    return String(Math.floor((date.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+                },
+                // Week
+                'W': () => {
+                    const target = new Date(date.valueOf());
+                    const dayNumber = (date.getDay() + 6) % 7;
+                    target.setDate(target.getDate() - dayNumber + 3);
+                    const firstThursday = target.valueOf();
+                    target.setMonth(0, 1);
+                    if (target.getDay() !== 4) {
+                        target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                    }
+                    return String(1 + Math.ceil((firstThursday - target.valueOf()) / 604800000));
+                },
+                // Month
+                'F': () => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][date.getMonth()],
+                'm': () => String(date.getMonth() + 1).padStart(2, '0'), // 01-12
+                'M': () => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getMonth()],
+                'n': () => String(date.getMonth() + 1), // 1-12
+                't': () => String(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()),
+                // Year
+                'L': () => {
+                    const year = date.getFullYear();
+                    return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0) ? '1' : '0';
+                },
+                'o': () => {
+                    const target = new Date(date.valueOf());
+                    target.setDate(target.getDate() - ((date.getDay() + 6) % 7) + 3);
+                    return String(target.getFullYear());
+                },
+                'X': () => {
+                    const year = date.getFullYear();
+                    return (year >= 0 ? '+' : '') + String(year).padStart(4, '0');
+                },
+                'Y': () => String(date.getFullYear()), // 2025
+                'y': () => String(date.getFullYear()).slice(-2), // 25
+                // Time
+                'a': () => date.getHours() < 12 ? 'am' : 'pm',
+                'A': () => date.getHours() < 12 ? 'AM' : 'PM',
+                'B': () => {
+                    const hours = date.getUTCHours();
+                    const minutes = date.getUTCMinutes();
+                    const seconds = date.getUTCSeconds();
+                    const beats = Math.floor(((hours * 3600) + (minutes * 60) + seconds) / 86.4);
+                    return String(beats).padStart(3, '0');
+                },
+                'g': () => {
+                    const hour = date.getHours() % 12;
+                    return String(hour === 0 ? 12 : hour); // 1-12
+                },
+                'G': () => String(date.getHours()), // 0-23
+                'h': () => {
+                    const hour = date.getHours() % 12;
+                    return String(hour === 0 ? 12 : hour).padStart(2, '0'); // 01-12
+                },
+                'H': () => String(date.getHours()).padStart(2, '0'), // 00-23
+                'i': () => String(date.getMinutes()).padStart(2, '0'), // 00-59
+                's': () => String(date.getSeconds()).padStart(2, '0'), // 00-59
+                'u': () => String(date.getMilliseconds() * 1000).padStart(6, '0'), // microseconds
+                'v': () => String(date.getMilliseconds()).padStart(3, '0'), // milliseconds
+                // Timezone
+                'e': () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                'I': () => {
+                    const jan = new Date(date.getFullYear(), 0, 1);
+                    const jul = new Date(date.getFullYear(), 6, 1);
+                    return date.getTimezoneOffset() < Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset()) ? '1' : '0';
+                },
+                'O': () => {
+                    const offset = -date.getTimezoneOffset();
+                    const hours = Math.floor(Math.abs(offset) / 60);
+                    const minutes = Math.abs(offset) % 60;
+                    return (offset >= 0 ? '+' : '-') + String(hours).padStart(2, '0') + String(minutes).padStart(2, '0');
+                },
+                'P': () => {
+                    const offset = -date.getTimezoneOffset();
+                    const hours = Math.floor(Math.abs(offset) / 60);
+                    const minutes = Math.abs(offset) % 60;
+                    return (offset >= 0 ? '+' : '-') + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+                },
+                'T': () => {
+                    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (timeZone) {
+                        const formatter = new Intl.DateTimeFormat('en', { timeZoneName: 'short', timeZone });
+                        const parts = formatter.formatToParts(date);
+                        const tzPart = parts.find(part => part.type === 'timeZoneName');
+                        return tzPart?.value || 'UTC';
+                    }
+                    return 'UTC';
+                },
+                'Z': () => String(date.getTimezoneOffset() * -60),
+                // Full date/time
+                'c': () => date.toISOString(),
+                'r': () => date.toUTCString(),
+                'U': () => String(Math.floor(date.getTime() / 1000))
+            };
+            let result = '';
+            let i = 0;
+            while (i < format.length) {
+                const char = format[i];
+                if (char === '\\') {
+                    // Escaped character
+                    i++;
+                    if (i < format.length) {
+                        result += format[i];
+                    }
+                }
+                else if (formatMap[char]) {
+                    result += formatMap[char]();
+                }
+                else {
+                    result += char;
+                }
+                i++;
+            }
+            return result;
+        }
+    }
+
+    // @ts-ignore - This will be replaced by Rollup
+    const limitString = (str, length, rest = '...') => {
+        if (str.length <= length)
+            return str;
+        return str.slice(0, length - rest.length) + rest;
+    };
+    const normalize = (s) => String(s || '').toLowerCase().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const classSafeString = (str) => str.replace(/[^a-zA-Z0-9-_]+/g, '-');
+    const nop = (...args) => { };
+    const logger = { log: nop, group: nop, groupCollapsed: nop, groupEnd: nop, info: nop, debug: nop, error: nop, warn: nop, table: nop };
+    const debug = nop;
+    const debugTable = nop;
+    const invertMapping = (mapping) => {
+        const inverted = {};
+        for (let [source, targets] of Object.entries(mapping)) {
+            if (typeof targets === 'string') {
+                targets = [targets];
+            }
+            for (const target of targets) {
+                if (Array.isArray(inverted[target])) {
+                    inverted[target].push(source);
+                }
+                else {
+                    inverted[target] = [source];
+                }
+            }
+        }
+        return inverted;
+    };
+
     /*
      * Data Transformer – CSV data transformation and validation engine
      * ----------------------------------------------------------------
      * Handles transformation of parsed CSV data according to column specifications,
      * including validation, custom transforms, and output generation in various formats.
      */
-    class DataTransformer extends EventTarget {
+    class DefaultDataTransformer extends EventTarget {
         constructor(options = {}) {
             super();
             this.options = Object.assign({
-                generateCsv: true,
-                includeErrors: true
+                allowUnmappedTargets: false,
             }, options ?? {});
         }
         /**
@@ -502,12 +923,7 @@
             }
             // Transform rows
             const { data, errors } = this.transformRows(inputCsv, mapping, columnSpecs);
-            debug({ data, errors });
-            // Generate CSV if requested (simple format only)
-            let csv = null;
-            if (this.options.generateCsv) {
-                csv = this.generateCsv(data);
-            }
+            const csv = this.generateCsv(data);
             // Calculate validation summary
             const validation = this.calculateValidationSummary(data, errors);
             return { data, csv, validation };
@@ -528,23 +944,6 @@
                 errorsByField
             };
         }
-        _invertMapping(mapping) {
-            const inverted = {};
-            for (let [source, targets] of Object.entries(mapping)) {
-                if (typeof targets === 'string') {
-                    targets = [targets];
-                }
-                for (const target of targets) {
-                    if (Array.isArray(inverted[target])) {
-                        inverted[target].push(source);
-                    }
-                    else {
-                        inverted[target] = [source];
-                    }
-                }
-            }
-            return inverted;
-        }
         /**
          * Transform individual rows according to column specifications
          * @param inputCsv Source data rows
@@ -555,11 +954,11 @@
         transformRows(inputCsv, mapping, columnSpecs) {
             let rowIndex = 0;
             const errors = [];
-            const inverseMapping = this._invertMapping(mapping);
+            const inverseMapping = invertMapping(mapping);
             let data = inputCsv.clone();
             data.remapColumns(mapping);
             const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
-            if (data.headers) {
+            if (data.headers && !this.options.allowUnmappedTargets) {
                 const toRemove = data.headers?.filter(header => !inverseMapping[header]);
                 toRemove.forEach(col => data.removeColumn(col));
             }
@@ -578,30 +977,24 @@
                     const spec = colCache.get(header) ?? columnSpecs.find(spec => (spec.outputHeader ?? spec.name ?? spec.title) === header);
                     colCache.set(header, spec ?? null);
                     if (!spec) {
-                        throw new Error(`Column spec not found for ${header}`);
+                        continue;
                     }
                     // Apply custom transformation if specified
                     let transformedValue = value;
-                    if (spec.transform && typeof spec.transform === 'function') {
+                    if (spec.transform) {
                         try {
-                            const rowObject = {};
-                            if (inputCsv.headers) {
-                                inputCsv.headers.forEach(header => {
-                                    rowObject[header] = sourceRow.get(header) || '';
-                                });
-                            }
-                            transformedValue = spec.transform(value, rowObject);
+                            transformedValue = this.transformValue(transformedValue, spec.transform, rowIndex, header, spec);
                         }
                         catch (error) {
                             const msg = error instanceof Error ? error.message : String(error);
-                            this._transformationError(rowIndex, spec.title || spec.name, transformedValue, msg);
+                            this._transformationError(rowIndex, header, transformedValue, msg);
                             continue;
                         }
                     }
                     // Validate the transformed value
                     if (spec.validate !== undefined) {
                         const validate = typeof spec.validate === 'string' ? { type: spec.validate } : spec.validate;
-                        const isValid = DataTransformer.validateValue(transformedValue, validate);
+                        const isValid = DefaultDataTransformer.validateValue(transformedValue, validate);
                         if (!isValid) {
                             let message;
                             if (typeof validate === 'object' && validate !== null && 'type' in validate) {
@@ -637,6 +1030,120 @@
             }
             return { data, errors };
         }
+        _guessBoolean(val) {
+            if (typeof val === 'string') {
+                val = val.trim().toLowerCase();
+                if (['true', '1', 'yes', 'y'].includes(val))
+                    return true;
+                if (['false', '0', 'no', 'n'].includes(val))
+                    return false;
+            }
+            return Boolean(val);
+        }
+        _transformBoolean(value) {
+            if (this.options.booleanFormatter) {
+                if (typeof this.options.booleanFormatter === 'function') {
+                    value = this.options.booleanFormatter(value);
+                }
+                else if (typeof this.options.booleanFormatter === 'object') {
+                    value = this._guessBoolean(value);
+                    value = value ? this.options.booleanFormatter.true : this.options.booleanFormatter.false;
+                }
+                else {
+                    throw new Error('Invalid booleanFormatter option');
+                }
+            }
+            else {
+                value = this._guessBoolean(value) ? '1' : '0';
+            }
+            return value;
+        }
+        _transformDate(value, row, column, spec) {
+            let formatter = this.options.dateFormatter;
+            if (typeof spec.transform === 'object' &&
+                spec.transform !== null &&
+                'format' in spec.transform &&
+                typeof spec.transform.format !== 'undefined') {
+                formatter = spec.transform.format;
+            }
+            if (formatter) {
+                if (typeof formatter === 'function') {
+                    value = formatter(value, row, column, spec);
+                }
+                else if (typeof formatter === 'string') {
+                    value = this._formatDateString(value, formatter);
+                }
+            }
+            else {
+                value = `${new Date(value)}`;
+            }
+            return value;
+        }
+        _formatDateString(value, format) {
+            return DateFormatter.format(value, format);
+        }
+        transformValue(value, transform, rowIndex, column, spec) {
+            if (typeof transform === 'string') {
+                transform = transform.split('|').map(t => t.trim());
+            }
+            if (Array.isArray(transform)) {
+                for (const t of transform) {
+                    if (typeof t === 'string') {
+                        switch (t) {
+                            case 'number':
+                                value = String(Number(value));
+                                break;
+                            case 'boolean':
+                                value = this._transformBoolean(value);
+                                break;
+                            case 'date':
+                                value = this._transformDate(value, rowIndex, column, spec);
+                                break;
+                            case 'string':
+                                value = String(value);
+                                break;
+                            case 'uppercase':
+                                value = String(value).toUpperCase();
+                                break;
+                            case 'lowercase':
+                                value = String(value).toLowerCase();
+                                break;
+                            case 'trim':
+                                value = String(value).trim();
+                                break;
+                            case 'kebab':
+                                value = Str.kebabCase(String(value));
+                                break;
+                            case 'snake':
+                                value = Str.snakeCase(String(value));
+                                break;
+                            case 'screaming_snake':
+                                value = Str.screamingSnakeCase(String(value));
+                                break;
+                            case 'title':
+                                value = Str.titleCase(String(value));
+                                break;
+                            case 'pascal':
+                                value = Str.pascalCase(String(value));
+                                break;
+                            case 'camel':
+                                value = Str.camelCase(String(value));
+                                break;
+                            case 'ascii':
+                                value = Str.ascii(String(value));
+                                break;
+                        }
+                    }
+                    else if (typeof t === 'function') {
+                        value = t(value, rowIndex, column, spec);
+                    }
+                }
+            }
+            else if (typeof transform === 'function') {
+                value = transform(value, rowIndex, column, spec);
+            }
+            return value;
+        }
         /**
          * Generate CSV output from transformed data
          * @param mappedRows Transformed data rows
@@ -670,10 +1177,7 @@
             const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
             const emptyCsv = new Csv(rows, headers);
             const { data, errors } = this.transformRows(emptyCsv, mapping, columnSpecs);
-            let csv = null;
-            if (this.options.generateCsv) {
-                csv = this.generateCsv(emptyCsv);
-            }
+            const csv = this.generateCsv(emptyCsv);
             const validation = this.calculateValidationSummary(data, errors);
             return { data, csv, validation };
         }
@@ -722,7 +1226,7 @@
                 return true; // Empty values are considered valid unless required
             }
             if (validator instanceof RegExp) {
-                return DataTransformer._validateRegex(fieldValue, validator);
+                return DefaultDataTransformer._validateRegex(fieldValue, validator);
             }
             if (typeof validator === 'function') {
                 try {
@@ -737,7 +1241,7 @@
                 // Handle ValidationRule based on its type
                 switch (rule.type) {
                     case 'email':
-                        return DataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
+                        return DefaultDataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
                     case 'number':
                         const num = Number(fieldValue);
                         if (isNaN(num) || !isFinite(num))
@@ -751,16 +1255,15 @@
                         return ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(String(fieldValue).toLowerCase());
                     case 'date':
                         if (rule.format) {
-                            const regex = DataTransformer.dateFormatToRegex(rule.format);
-                            return regex.test(String(fieldValue));
+                            return DateFormatter.validateFormat(String(fieldValue), rule.format);
                         }
                         return !isNaN(Date.parse(fieldValue));
                     case 'phone':
                     case 'tel':
                     case 'telephone':
-                        return DataTransformer._validateRegex(fieldValue, /^[\+]?[\d\s\-\(\)\.]{7,15}$/);
+                        return DefaultDataTransformer._validateRegex(fieldValue, /^[\+]?[\d\s\-\(\)\.]{7,15}$/);
                     case 'time':
-                        return DataTransformer._validateRegex(fieldValue, /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/);
+                        return DefaultDataTransformer._validateRegex(fieldValue, /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/);
                     case 'datetime':
                         return !isNaN(Date.parse(fieldValue));
                     default:
@@ -768,41 +1271,6 @@
                 }
             }
             return true;
-        }
-        /**
-         * Convert date format string to RegExp for validation
-         * @param format Date format string (e.g., 'YYYY-MM-DD')
-         * @param options Validation options
-         * @returns RegExp for validation
-         */
-        static dateFormatToRegex(format, { allowSeparators = true, strictLength = false } = {}) {
-            // Common format mappings
-            const patterns = {
-                'YYYY': '\\d{4}',
-                'YY': '\\d{2}',
-                'MM': '\\d{1,2}',
-                'DD': '\\d{1,2}',
-                'HH': '\\d{1,2}',
-                'mm': '\\d{1,2}',
-                'ss': '\\d{1,2}'
-            };
-            if (strictLength) {
-                patterns['MM'] = '\\d{2}';
-                patterns['DD'] = '\\d{2}';
-                patterns['HH'] = '\\d{2}';
-                patterns['mm'] = '\\d{2}';
-                patterns['ss'] = '\\d{2}';
-            }
-            let regex = format;
-            // Replace format tokens with regex patterns
-            for (const [token, pattern] of Object.entries(patterns)) {
-                regex = regex.replace(new RegExp(token, 'g'), pattern);
-            }
-            // Handle separators
-            if (allowSeparators) {
-                regex = regex.replace(/[-\/\.\s:]/g, '[-\\/\\.\\s:]');
-            }
-            return new RegExp(`^${regex}$`);
         }
         /**
          * Validate value against regex pattern
@@ -875,7 +1343,7 @@
     }
 
     class AutoMapper {
-        static map(headers, columns, mode = 'csvToConfig', autoThreshold = 0.9, existingMapping = {}) {
+        static map(headers, columns, mode = 'csvToConfig', autoThreshold = 0.8, existingMapping = {}) {
             const mappingMode = mode || 'csvToConfig';
             const used = new Map();
             if (mappingMode === 'csvToConfig') {
@@ -1035,7 +1503,7 @@
             return `${options.rowCount} rows • sep: ${this._escape(options.dialect.separator || ',')}`;
         }
         reRender(container, options) {
-            logger.group('Re-Rendering');
+            logger.groupCollapsed('Re-Rendering');
             this.container = container;
             this.currentOptions = options;
             container.dataset.mappingMode = options.mappingMode;
@@ -1076,7 +1544,7 @@
                 this.reRender(container, options);
                 return;
             }
-            logger.group('Rendering');
+            logger.groupCollapsed('Rendering');
             this.container = container;
             this.currentOptions = options;
             container.dataset.mappingMode = options.mappingMode;
@@ -1163,17 +1631,21 @@
         }
         _renderMappingTable(options) {
             debug('_renderMappingTable', { options });
+            const fullMapping = invertMapping(options.fullMapping);
             if (options.mappingMode === 'configToCsv') {
                 // Config columns on the left, CSV headers on the right
                 return options.columnSpecs.map(spec => {
-                    let currentMapping = options.currentMapping[spec.name] || '';
-                    const selectOptions = this._generateCsvHeaderOptions(options.headers, currentMapping, options.currentMapping, options.allowMultipleSelection);
+                    let currentMapping = fullMapping[spec.name] || '';
+                    const selectOptions = this._generateCsvHeaderOptions(options.headers, currentMapping, fullMapping, options.allowMultipleSelection);
                     this.lastDrawnMap = options.fullMapping;
+                    const tooltip = spec.description ? ` title="${this._escape(spec.description)}"` : '';
+                    const comment = spec.comment ? `\n<div class="csvm-comment">${this._escape(spec.comment)}</div>` : '';
+                    const multiple = spec.allowDuplicates ? ' multiple' : '';
                     return `
           <tr>
-            <td><strong>${this._escape(spec.title || spec.name)}${spec.required ? ' *' : ''}</strong></td>
+            <td><strong${tooltip}>${this._escape(spec.title || spec.name)}${spec.required ? ' *' : ''}</strong>${comment}</td>
             <td>
-              <select id="${this.uniqid}-${classSafeString(spec.name)}" name="${classSafeString(spec.name)}" data-src="${this._escape(spec.name)}">
+              <select id="${this.uniqid}-${classSafeString(spec.name)}" name="${classSafeString(spec.name)}" data-src="${this._escape(spec.name)}"${tooltip}${multiple}>
                 ${selectOptions}
               </select>
             </td>
@@ -1185,7 +1657,7 @@
                 // CSV headers on the left, config columns on the right (standard mode)
                 return options.headers.map(header => {
                     const currentMapping = options.fullMapping[header] || '';
-                    const selectOptions = this._generateSelectOptions(options.columnSpecs, currentMapping, options.currentMapping, options.allowMultipleSelection);
+                    const selectOptions = this._generateSelectOptions(options.columnSpecs, currentMapping, fullMapping, options.allowMultipleSelection);
                     // Check if this CSV header has multiple mappings (beyond the simple mapping)
                     const allMappings = this._getFullMappingsForHeader(header, options);
                     const hasMultipleMappings = allMappings.length > 1;
@@ -1212,8 +1684,10 @@
             // Count how many times each target is used
             const usageCounts = new Map();
             Object.values(allMappings).forEach(target => {
-                if (target)
-                    usageCounts.set(target, (usageCounts.get(target) || 0) + 1);
+                if (target) {
+                    target = Array.isArray(target) ? target : [target];
+                    target.forEach(subtarget => usageCounts.set(subtarget, (usageCounts.get(subtarget) || 0) + 1));
+                }
             });
             if (typeof currentTargetName === 'string') {
                 currentTargetName = [currentTargetName];
@@ -1227,22 +1701,25 @@
                 const disabled = !canUse ? 'disabled' : '';
                 const selected = isCurrentTarget ? 'selected' : '';
                 const title = this._escape(spec.title || spec.name);
-                const multiIndicator = (allowMultipleSelection || spec.allowDuplicates) ? ' (multi)' : '';
                 const requiredIndicator = (spec.required && canUse) ? ' *' : '';
-                return `<option class="${spec.required ? 'required' : ''}" value="${this._escape(spec.name)}" ${selected} ${disabled}>${title}${multiIndicator}${requiredIndicator}</option>`;
+                return `<option class="${spec.required ? 'required' : ''}" value="${this._escape(spec.name)}" ${selected} ${disabled}>${title}${requiredIndicator}</option>`;
             });
             return [ignoreOption, ...columnOptions].join('');
         }
         _generateCsvHeaderOptions(csvHeaders, currentTargetHeader, allMappings, allowMultipleSelection) {
+            if (!Array.isArray(currentTargetHeader))
+                currentTargetHeader = [currentTargetHeader];
             // In configToCsv mode, multiple config columns can map to the same CSV header
             debug({ csvHeaders, currentTargetHeader, allMappings });
             const ignoreOption = '<option value="">— Ignore —</option>';
             const headerOptions = csvHeaders.map(header => {
-                const isCurrentTarget = currentTargetHeader === header;
+                const isCurrentTarget = currentTargetHeader.includes(header);
                 // If allowMultipleSelection is false, check if this header is already used by another config column
                 let disabled = '';
                 if (!allowMultipleSelection) {
-                    const headerAlreadyUsed = Object.entries(allMappings).some(([configCol, csvHeader]) => csvHeader === header && configCol !== Object.keys(allMappings).find(k => allMappings[k] === currentTargetHeader));
+                    const headerAlreadyUsed = Object.entries(allMappings).some(([configCol, csvHeaders]) => {
+                        return csvHeaders.includes(header);
+                    });
                     if (headerAlreadyUsed && !isCurrentTarget) {
                         disabled = 'disabled';
                     }
@@ -1259,65 +1736,25 @@
             debug('Attaching event listeners');
             const selectElements = this.container.querySelectorAll('select[data-src]');
             selectElements.forEach(select => {
-                select.addEventListener('change', () => {
+                select.addEventListener('change', (event) => {
                     let sourceHeader = select.getAttribute('data-src');
-                    debug('Select changed', { sourceHeader, value: select.value, selectedOptions: Array.from(select.selectedOptions).map(o => o.value) });
+                    const selectedOptions = Array.from(select.selectedOptions).map(o => o.value);
+                    debug('Select changed', {
+                        sourceHeader,
+                        value: select.value,
+                        selectedOptions
+                    });
+                    if (!sourceHeader)
+                        return;
                     if (this.container?.dataset.mappingMode === 'configToCsv') {
                         // In configToCsv mode: data-src=configColumn, value=csvHeader
-                        const configColumn = sourceHeader;
-                        const newCsvHeader = select.value;
-                        if (!newCsvHeader && configColumn && this.currentOptions) {
-                            // User is clearing the mapping - find the currently mapped CSV header
-                            const currentCsvHeader = this.currentOptions.currentMapping[configColumn];
-                            if (currentCsvHeader && this.mappingChangeCallback) {
-                                // Only use special removal format if multiple selection is enabled
-                                if (this.currentOptions.allowMultipleSelection) {
-                                    this.lastDrawnMap = this.mappingChangeCallback(`${currentCsvHeader}|${configColumn}`, '');
-                                }
-                                else {
-                                    this.lastDrawnMap = this.mappingChangeCallback(currentCsvHeader, '');
-                                }
-                            }
-                        }
-                        else if (newCsvHeader && configColumn && this.mappingChangeCallback) {
-                            // User is setting a new mapping
-                            // First clear any existing mapping for this config column
-                            if (this.currentOptions) {
-                                const currentCsvHeader = this.currentOptions.currentMapping[configColumn];
-                                if (currentCsvHeader && currentCsvHeader !== newCsvHeader) {
-                                    // Remove the old mapping first
-                                    if (this.currentOptions.allowMultipleSelection) {
-                                        this.lastDrawnMap = this.mappingChangeCallback(`${currentCsvHeader}|${configColumn}`, '');
-                                    }
-                                    else {
-                                        this.lastDrawnMap = this.mappingChangeCallback(currentCsvHeader, '');
-                                    }
-                                }
-                            }
-                            // Add the new mapping
-                            this.lastDrawnMap = this.mappingChangeCallback(newCsvHeader, configColumn);
+                        if (this.mappingChangeCallback) {
+                            this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, selectedOptions);
                         }
                     }
                     else {
-                        // Standard csvToConfig mode
-                        if (sourceHeader && this.mappingChangeCallback) {
-                            if (select.multiple && this.currentOptions?.allowMultipleSelection) {
-                                // Handle multiple selection - get all selected values
-                                const selectedValues = Array.from(select.selectedOptions).map(option => option.value).filter(v => v);
-                                // Clear existing mappings for this CSV header first
-                                this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, '');
-                                // Add each selected mapping
-                                selectedValues.forEach(targetColumn => {
-                                    if (targetColumn && this.mappingChangeCallback) {
-                                        this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, targetColumn);
-                                    }
-                                });
-                            }
-                            else {
-                                // Single selection mode
-                                const targetColumn = select.value;
-                                this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, targetColumn ?? '');
-                            }
+                        if (this.mappingChangeCallback) {
+                            this.lastDrawnMap = this.mappingChangeCallback(sourceHeader, selectedOptions);
                         }
                     }
                 });
@@ -1361,6 +1798,9 @@
         border-bottom: 1px solid #ddd;
         font-weight: 600;
         color: #333;
+      }
+      .csvm-comment {
+        font-size: 0.8rem;
       }
       .csvm-card-b { padding: 0; }
       .csvm-table {
@@ -1531,18 +1971,18 @@
          * @param options Parsing options including dialect preferences
          * @returns Parsed result with headers, rows, and detected dialect
          */
-        parseCSV(text, { headers = true, separator = '', enclosure = '', escape = '', guessMaxLines = 25 } = {}) {
+        parseCSV(text, { headers = true, delimiter = '', quoteChar = '', escapeChar = '' } = {}) {
             const config = {
                 header: false,
                 skipEmptyLines: true,
                 dynamicTyping: false
             };
-            if (separator)
-                config.delimiter = separator;
-            if (enclosure)
-                config.quoteChar = enclosure;
-            if (escape)
-                config.escapeChar = escape;
+            if (delimiter)
+                config.delimiter = delimiter;
+            if (quoteChar)
+                config.quoteChar = quoteChar;
+            if (escapeChar)
+                config.escapeChar = escapeChar;
             const result = Papa.parse(text, config);
             if (result.errors.length > 0) {
                 console.warn('PapaParse errors:', result.errors);
@@ -1556,13 +1996,13 @@
                     headers: [],
                     rows: [],
                     rawRows: [],
-                    dialect: { separator: separator || ',', enclosure: enclosure || '"', escape: escape || null }
+                    dialect: { separator: delimiter || ',', enclosure: quoteChar || '"', escape: escapeChar || null }
                 };
             }
             const dialect = {
-                separator: result.meta.delimiter || separator || ',',
-                enclosure: enclosure || '"',
-                escape: escape || null
+                separator: result.meta.delimiter || delimiter || ',',
+                enclosure: quoteChar || '"',
+                escape: escapeChar || null
             };
             if (headers) {
                 const headerRow = rows.shift() || [];
@@ -1580,12 +2020,8 @@
          * @param options Dialect detection options
          * @returns Detected CSV dialect
          */
-        detectDialect(text, { separator = null, enclosure = null, escape = null, guessMaxLines = 25 } = {}) {
+        detectDialect(text, { delimiter: separator = null, quoteChar: enclosure = null, escapeChar: escape = null } = {}) {
             let sampleText = text;
-            if (guessMaxLines > 0) {
-                const lines = text.split(/\r\n|\n|\r/);
-                sampleText = lines.slice(0, guessMaxLines).join('\n');
-            }
             const config = {
                 header: false,
                 preview: 5,
@@ -1676,74 +2112,88 @@
 
     class CsvMapper extends EventTarget {
         /**
-         * @param fileInput selector or element for <input type=file>
+         * The parsed CSV headers.
+         */
+        get headers() {
+            return this.csv?.headers ?? [];
+        }
+        /**
+         * @param fileInputOrOptions selector or element for file input, or options if no file input required
          * @param options configuration options
          */
-        constructor(fileInput, options = {}) {
+        constructor(fileInputOrOptions, options = {}) {
             super();
+            /** The HTML input being used/monitored (if set) */
             this.input = null;
+            /**
+             * The currently set columns
+             */
             this.columns = [];
+            /**
+             * The controls element (if any) where the UI is rendered.
+             *
+             * This will be the element passed in the controlsContainer
+             * option if set, or dynamically created at runtime.
+             */
             this.controlsEl = null;
-            this.mapping = {}; // Flexible: CSV header -> config column(s)
-            this.headers = [];
+            /**
+             * The current CSV column mapping from CSV header to config column(s)
+             */
+            this.mapping = {};
+            /**
+             * The parsed CSV dialect.
+             */
             this.dialect = { separator: ',', enclosure: '"', escape: null };
-            this.uiRenderer = new DefaultUIRenderer();
-            this.parser = new PapaParser();
+            /**
+             * Whether the current mapping and data is valid.
+             */
             this.isValid = true;
+            /**
+             * The input CSV as a Csv object.
+             */
             this.csv = null;
-            if (typeof fileInput === 'string') {
-                const fi = document.querySelector(fileInput);
+            if (typeof fileInputOrOptions === 'string') {
+                const fi = document.querySelector(fileInputOrOptions);
                 if (!(fi instanceof HTMLInputElement)) {
                     throw new Error('CsvMapper: first argument must be a file input, selector or options object.');
                 }
-                fileInput = fi;
+                fileInputOrOptions = fi;
             }
-            if (fileInput instanceof HTMLInputElement) {
-                this.input = fileInput;
+            if (fileInputOrOptions instanceof HTMLInputElement) {
+                this.input = fileInputOrOptions;
                 if (this.input.type !== 'file') {
                     throw new Error('CsvMapper: first argument must be a file input, selector or options object.');
                 }
             }
-            else if (typeof fileInput === 'object' && !(fileInput instanceof HTMLElement)) {
-                options = fileInput;
+            else if (typeof fileInputOrOptions === 'object' && !(fileInputOrOptions instanceof HTMLElement)) {
+                options = fileInputOrOptions;
             }
             else {
                 throw new Error('CsvMapper: first argument must be a file input, selector or options object.');
             }
             this.opts = Object.assign({
                 // Parsing/dialect
-                separator: '', // auto when falsy/empty string
-                enclosure: '', // auto when falsy/empty string
-                escape: '', // auto when falsy/empty string; fallback to doubling
-                guessMaxLines: 25, // How many lines to use for auto dialect parsing
-                // Library behavior
                 headers: true,
+                delimiter: '',
+                quoteChar: '',
+                escapeChar: '',
+                // Library behavior
                 remap: true,
                 showUserControls: this.input ? true : false,
-                mappingInput: null, // HTMLElement | false
-                controlsContainer: null, // selector | element | null
-                columns: [], // canonical column spec
+                mappingInput: null,
+                controlsContainer: null,
+                columns: [],
                 autoThreshold: 0.8,
-                allowUnmappedTargets: true,
-                setInputValidity: false, // Whether to use setCustomValidity on the file input
-                uiRenderer: null, // Custom UI renderer
-                mappingMode: 'configToCsv', // Default mapping direction
-                allowMultipleSelection: false, // Whether to allow many-to-many mapping
-                allowMultiple: false, // Whether to generate multiple columns in output
+                setInputValidity: false,
+                uiRenderer: null,
+                mappingMode: 'configToCsv',
+                allowMultipleSelection: false,
             }, options || {});
+            this.setColumns(options.columns);
             this.parser = this.opts.parser || new PapaParser();
-            this.setColumns(this.opts.columns);
-            this.controlsEl = this._resolveNode(this.opts.controlsContainer || null) || this._autoinsertContainer();
             this.setUiRenderer(this.opts.uiRenderer);
-            this.transformer = new DataTransformer(this.opts.output ?? {});
-            this.transformer.addEventListener('transformationFail', (evt) => {
-                const transformationFailEvent = new CustomEvent('transformationFail', evt);
-                return this.dispatchEvent(transformationFailEvent);
-            });
-            this.transformer.addEventListener('validationFail', (evt) => {
-                const validationFailEvent = new CustomEvent('validationFail', evt);
-                return this.dispatchEvent(validationFailEvent);
-            });
+            this.setTransformer(this.opts.transformer ?? new DefaultDataTransformer(this.opts.output ?? {}));
+            this.controlsEl = this._resolveNode(this.opts.controlsContainer || null) || this._autoinsertContainer();
             this._onFileChange = this._onFileChange.bind(this);
             if (this.input) {
                 this.input.addEventListener('change', this._onFileChange);
@@ -1758,7 +2208,32 @@
             this.uiRenderer.destroy();
         }
         // ===== Public API =====
-        getMapping() { return Object.assign({}, this.mapping); }
+        getHeaders() {
+            return [...this.headers];
+        }
+        /**
+         * Gets the detected dialect of the currently loaded CSV.
+         */
+        getDialect() {
+            return Object.assign({}, this.dialect);
+        }
+        setColumns(columns = []) {
+            this.columns = columns.map(c => typeof c === 'string' ? { name: c } : Object.assign({}, c));
+            this.columns.forEach(c => { if (!c.title)
+                c.title = c.name; });
+        }
+        // Many-to-many mapping API methods
+        getMapping() {
+            return Object.assign({}, this.mapping);
+        }
+        /**
+         * Sets the mapping for CSV headers to config columns.
+         * @param map Mapping object in either simple (string) or advanced (array) format
+         *
+         * @example
+         * mapper.setMapping({'CSV Header': 'config_column'});
+         * mapper.setMapping({'CSV Header': ['config_column1', 'config_column2']});
+         */
         setMapping(map) {
             this.mapping = {};
             if (map) {
@@ -1766,14 +2241,14 @@
                     if (typeof target === 'string') {
                         // Legacy format: string values
                         if (target) {
-                            this.addMapping(csvHeader, target);
+                            this._addMapping(csvHeader, target);
                         }
                     }
                     else {
                         // New format: array values
                         target.forEach(configColumn => {
                             if (configColumn) {
-                                this.addMapping(csvHeader, configColumn);
+                                this._addMapping(csvHeader, configColumn);
                             }
                         });
                     }
@@ -1781,77 +2256,121 @@
             }
             this._onMappingChange();
         }
-        getHeaders() { return [...this.headers]; }
-        getRawRows() {
-            if (!this.csv)
-                return [];
-            return Array.from(this.csv).map(row => {
-                const obj = {};
-                for (let i = 0; i < this.headers.length; i++) {
-                    obj[this.headers[i]] = row.get(i) || '';
-                }
-                return obj;
-            });
-        }
-        getDialect() { return Object.assign({}, this.dialect); }
-        redraw() { this.getMappedResult(); }
-        setColumns(columns = []) {
-            this.columns = columns.map(c => typeof c === 'string' ? { name: c } : Object.assign({}, c));
-            this.columns.forEach(c => { if (!c.title)
-                c.title = c.name; });
-        }
-        // Many-to-many mapping API methods
         resetColumnMapping() {
             this.mapping = {};
             this._onMappingChange();
         }
         addColumnMappings(mappings) {
             mappings.forEach(({ csvHeader, configColumn }) => {
-                this.addMapping(csvHeader, configColumn);
+                this._addMapping(csvHeader, configColumn);
             });
             this._onMappingChange();
         }
         addColumnMapping(csvHeader, configColumn) {
-            this.addMapping(csvHeader, configColumn);
+            this._addMapping(csvHeader, configColumn);
             this._onMappingChange();
         }
         removeColumnMapping(csvHeader, configColumn) {
-            this.removeMapping(csvHeader, configColumn);
+            this._removeMapping(csvHeader, configColumn);
             this._onMappingChange();
         }
         clearColumnMapping(csvHeader) {
-            this.clearMapping(csvHeader);
+            this._clearMapping(csvHeader);
             this._onMappingChange();
         }
         getColumnMappings(csvHeader) {
-            return this.getMappedColumns(csvHeader);
+            return this._getMappedColumns(csvHeader);
         }
         getAllMappings() {
             const result = {};
             // Include all CSV headers, even if they have no mappings
             this.headers.forEach(header => {
-                result[header] = this.getMappedColumns(header);
+                result[header] = this._getMappedColumns(header);
             });
             return result;
+        }
+        getParser() {
+            return this.parser;
+        }
+        setParser(parser) {
+            this.parser = parser;
+        }
+        getUiRenderer() {
+            return this.uiRenderer;
         }
         setUiRenderer(uiRenderer) {
             this.uiRenderer = this._resolveUiRenderer(uiRenderer);
         }
+        getTransformer() {
+            return this.transformer;
+        }
+        setTransformer(dataTransformer) {
+            this.transformer = dataTransformer;
+            this.transformer.addEventListener('transformationFail', (evt) => {
+                const transformationFailEvent = new CustomEvent('transformationFail', evt);
+                return this.dispatchEvent(transformationFailEvent);
+            });
+            this.transformer.addEventListener('validationFail', (evt) => {
+                const validationFailEvent = new CustomEvent('validationFail', evt);
+                return this.dispatchEvent(validationFailEvent);
+            });
+        }
+        /**
+         * Sets a CSV via a File object (usually from a file input)
+         */
+        async setFile(file) {
+            this.isValid = true;
+            this.csv = null;
+            this.uiRenderer.reset();
+            const afterReadEventOb = { detail: { text: await file.text() } };
+            const bpEvent = new CustomEvent('afterRead', afterReadEventOb);
+            this.dispatchEvent(bpEvent);
+            this.mapping = {};
+            this.mapCsv(afterReadEventOb.detail.text);
+        }
+        /**
+         * Sets the CSV text to be used.
+         *
+         * This will parse the CSV set the csv property appropriately.
+         *
+         * @group Main Methods
+         */
         setCsv(csvText) {
             this._beforeParseCsv(csvText);
             const parsed = this.parser.parseCSV(csvText, {
                 headers: this.opts.headers,
-                separator: this.opts.separator,
-                enclosure: this.opts.enclosure,
-                escape: this.opts.escape,
-                guessMaxLines: this.opts.guessMaxLines,
+                delimiter: this.opts.delimiter,
+                quoteChar: this.opts.quoteChar,
+                escapeChar: this.opts.escapeChar,
             });
             this._afterParseCsv(parsed);
             this.csv = new Csv(parsed.rawRows, parsed.headers);
-            this.headers = parsed.headers;
             this.dialect = parsed.dialect;
             return this;
         }
+        autoMap() {
+            AutoMapper.map(this.headers, this.columns, this.opts.mappingMode, this.opts.autoThreshold || 0.8, this.mapping);
+        }
+        render() {
+            this._renderControls();
+        }
+        /**
+         * Maps CSV text (or currently loaded CSV) using the current configuration
+         * and returns the result.
+         * @group Main Methods
+         * @param csvText Optional CSV text to parse and map. If not provided, uses currently loaded CSV.
+         * @returns MappedOutput object with data, csv string, and validation info, or false if error or no csv loaded.
+         *
+         * @example
+         * // Map currently loaded CSV
+         * const result = mapper.mapCsv();
+         * if (result) document.getElementById('csv').value = result.csv;
+         *
+         * // Map new CSV text
+         * const csvText = 'Name,Email\nAlice,Alice@example.com';
+         * const result2 = mapper.mapCsv(csvText);
+         * if (result2) document.getElementById('csv').value = result2.csv;
+         */
         mapCsv(csvText) {
             if (typeof csvText !== 'undefined') {
                 this.setCsv(csvText);
@@ -1866,25 +2385,57 @@
                 this._renderControls();
             return this.getMappedResult() ?? false;
         }
-        getMappedResult() {
+        remap() {
             this.isValid = true;
             this._renderControls();
             const beforeMapEvent = new CustomEvent('beforeMap', { detail: { csv: this.csv } });
             this.dispatchEvent(beforeMapEvent);
-            // Validate mapping
             const result = this._validateMapping();
-            if (result.isValid) {
-                // Trigger afterMap event when mapping changes
+            const amEvent = new CustomEvent('afterMap', { detail: { csv: this.csv, isValid: result.isValid } });
+            this.dispatchEvent(amEvent);
+            return result.isValid;
+        }
+        getMappedResult() {
+            const result = this.remap();
+            if (result) {
+                // Trigger afterRemap event when mapping changes
+                const brmEvent = new CustomEvent('beforeRemap', { detail: { csv: this.csv } });
+                this.dispatchEvent(brmEvent);
                 const { data, csv, validation } = this._produceOutput();
-                const amEvent = new CustomEvent('afterMap', { detail: { rows: data.rows, csv } });
-                this.dispatchEvent(amEvent);
+                const armEvent = new CustomEvent('afterRemap', { detail: { rows: data.rows, csv } });
+                this.dispatchEvent(armEvent);
                 // Update mapping input
                 const mappingInput = this._resolveNode(this.opts.mappingInput || null);
                 if (mappingInput instanceof HTMLInputElement) {
                     mappingInput.value = JSON.stringify(this.mapping);
                 }
                 this._renderControls(validation);
+                if (this.input && this.opts.remap && csv) {
+                    this._replaceInputFileWithCsv(csv);
+                }
                 return { data, csv, validation };
+            }
+        }
+        _replaceInputFileWithCsv(csv) {
+            const f = this.input.files?.[0];
+            const remappedBlob = new Blob([csv], { type: 'text/csv' });
+            const newFile = new File([remappedBlob], f?.name ?? 'remapped.csv', { type: 'text/csv' });
+            const replaced = this._tryReplaceFileList(newFile);
+            if (!replaced) {
+                console.warn('Could not replace file input contents - browser may not support it.');
+            }
+        }
+        _tryReplaceFileList(newFile) {
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(newFile);
+                // Some older browsers mark `files` as read-only in the IDL, but modern engines allow this.
+                this.input.files = dt.files;
+                // sanity check
+                return this.input.files?.[0]?.name === newFile.name;
+            }
+            catch {
+                return false;
             }
         }
         _resolveUiRenderer(uiRenderer) {
@@ -1897,29 +2448,34 @@
             else {
                 uiRenderer = uiRenderer || new DefaultUIRenderer();
             }
-            uiRenderer.onMappingChange((sourceHeader, targetColumn) => {
-                debug(`Mapping changed for ${sourceHeader} to ${targetColumn}`);
-                // Check if this is a removal request in the format "csvHeader|configColumn"
-                if (!targetColumn && sourceHeader.includes('|')) {
-                    const [csvHeader, configColumn] = sourceHeader.split('|');
-                    this.removeMapping(csvHeader, configColumn);
-                }
-                else if (targetColumn) {
-                    // Only add multiple mappings if allowMultipleSelection is enabled
-                    if (this.opts.allowMultipleSelection) {
-                        this.addMapping(sourceHeader, targetColumn);
+            uiRenderer.onMappingChange((sourceHeader, targetColumns) => {
+                if (this.opts.mappingMode === 'configToCsv') {
+                    const sources = Array.isArray(targetColumns) ? targetColumns : [targetColumns];
+                    const target = sourceHeader;
+                    for (let [header, mapped] of Object.entries(this.mapping)) {
+                        mapped = Array.isArray(mapped) ? mapped : [mapped];
+                        if (mapped.includes(target)) {
+                            this._removeMapping(header, target);
+                        }
                     }
-                    else {
-                        // For single selection mode, clear any existing mapping first
-                        this.clearMapping(sourceHeader);
-                        this.mapping[sourceHeader] = targetColumn;
+                    for (const source of sources) {
+                        this._addMapping(source, target);
                     }
                 }
                 else {
-                    this.clearMapping(sourceHeader);
+                    if (Array.isArray(targetColumns)) {
+                        if (targetColumns.length === 1) {
+                            targetColumns = targetColumns[0];
+                        }
+                        else if (targetColumns.length === 0) {
+                            targetColumns = '';
+                        }
+                    }
+                    this.mapping[sourceHeader] = targetColumns;
                 }
                 debugTable(this.mapping);
                 this._onMappingChange();
+                this.getMappedResult();
                 return this.mapping;
             });
             return uiRenderer;
@@ -1932,11 +2488,7 @@
                 const file = this.input.files && this.input.files[0];
                 if (!file)
                     return;
-                const afterReadEventOb = { detail: { text: await file.text() } };
-                const bpEvent = new CustomEvent('afterRead', afterReadEventOb);
-                this.dispatchEvent(bpEvent);
-                this.mapping = {};
-                this.mapCsv(afterReadEventOb.detail.text);
+                this.setFile(file);
             }
         }
         _beforeParseCsv(csv) {
@@ -1946,7 +2498,7 @@
             this.dispatchEvent(new CustomEvent('afterParseCsv', { detail: { csv } }));
         }
         _autoMap() {
-            AutoMapper.map(this.headers, this.columns, this.opts.mappingMode, this.opts.autoThreshold || 0.8, this.mapping);
+            this.autoMap();
             this._mappingChangeEvent();
         }
         _validateMapping() {
@@ -1989,7 +2541,7 @@
         _onMappingChange() {
             this.isValid = true;
             this._mappingChangeEvent();
-            this.getMappedResult();
+            this.remap();
         }
         _mappingChangeEvent() {
             const mappingChangeEvent = new CustomEvent('mappingChange', {
@@ -2004,7 +2556,7 @@
         validateRequiredColumns() {
             const missingRequired = [];
             // Get all mapped targets using the helper method
-            const mappedTargets = this.getAllMappedTargets();
+            const mappedTargets = this._getAllMappedTargets();
             const mappedTargetsSet = new Set(mappedTargets);
             for (const spec of this.columns) {
                 if ((spec.required && (typeof spec.defaultValue === 'undefined')) && !mappedTargetsSet.has(spec.name)) {
@@ -2018,7 +2570,7 @@
             };
         }
         // Helper methods for managing flexible mapping structure
-        addMapping(csvHeader, configColumn) {
+        _addMapping(csvHeader, configColumn) {
             const current = this.mapping[csvHeader];
             if (!current) {
                 this.mapping[csvHeader] = configColumn;
@@ -2036,7 +2588,7 @@
                 }
             }
         }
-        removeMapping(csvHeader, configColumn) {
+        _removeMapping(csvHeader, configColumn) {
             const current = this.mapping[csvHeader];
             if (!current)
                 return;
@@ -2059,16 +2611,16 @@
                 }
             }
         }
-        clearMapping(csvHeader) {
+        _clearMapping(csvHeader) {
             delete this.mapping[csvHeader];
         }
-        getMappedColumns(csvHeader) {
+        _getMappedColumns(csvHeader) {
             const current = this.mapping[csvHeader];
             if (!current)
                 return [];
             return typeof current === 'string' ? [current] : [...current];
         }
-        getAllMappedTargets() {
+        _getAllMappedTargets() {
             const targets = new Set();
             Object.values(this.mapping).forEach(value => {
                 if (typeof value === 'string') {
@@ -2081,7 +2633,7 @@
             return Array.from(targets);
         }
         // Convert internal mapping to simple format for UI compatibility
-        getSimpleMapping() {
+        _getSimpleMapping() {
             const simple = {};
             Object.entries(this.mapping).forEach(([csvHeader, value]) => {
                 if (typeof value === 'string') {
@@ -2095,7 +2647,7 @@
             return simple;
         }
         // Get reverse mapping for configToCsv mode (configColumn -> csvHeader)
-        getReverseMapping() {
+        _getReverseMapping() {
             const reverse = {};
             Object.entries(this.mapping).forEach(([csvHeader, value]) => {
                 if (typeof value === 'string') {
@@ -2162,7 +2714,7 @@
             const mappingStatus = this._getMappingStatus();
             // Get appropriate mapping for UI based on mode
             const mappingMode = this.opts.mappingMode || 'csvToConfig';
-            const currentMapping = mappingMode === 'configToCsv' ? this.getReverseMapping() : this.getSimpleMapping();
+            const currentMapping = mappingMode === 'configToCsv' ? this._getReverseMapping() : this._getSimpleMapping();
             // Prepare render options
             const renderOptions = {
                 headers: this.headers,
@@ -2179,9 +2731,12 @@
             // Render using the UI renderer
             this.uiRenderer.render(this.controlsEl, renderOptions);
         }
+        redraw() {
+            this._renderControls();
+        }
         _getMappingStatus() {
             const requiredColumns = this.columns.filter(c => c.required === true);
-            const mappedTargets = this.getAllMappedTargets();
+            const mappedTargets = this._getAllMappedTargets();
             const mappedTargetsSet = new Set(mappedTargets);
             const missingRequired = requiredColumns.filter(col => !mappedTargetsSet.has(col.name));
             return {
@@ -2190,7 +2745,6 @@
                 mappedColumns: mappedTargets
             };
         }
-        _banner(text) { return `<div class="csvm-note">${CsvMapper.escape(text)}</div>`; }
         // ===== Helpers =====
         _resolveNode(ref) {
             if (!ref)
@@ -2207,7 +2761,6 @@
             this.input.insertAdjacentElement('afterend', d);
             return d;
         }
-        // ---------- CSV core - delegates to PapaParser ----------
         static parseCSV(text, options = {}) {
             const parser = new PapaParser();
             return parser.parseCSV(text, options);
@@ -2215,139 +2768,6 @@
         static detectDialect(text, options = {}) {
             const parser = new PapaParser();
             return parser.detectDialect(text, options);
-        }
-        static toCsvRow(arr, sep = ',', quote = '"', esc = null) {
-            const parser = new PapaParser();
-            return parser.toCsvRow(arr, sep, quote, esc);
-        }
-        static _validateValue(fieldValue, validator) {
-            if (typeof validator === 'string') {
-                validator = { type: validator };
-            }
-            if (validator instanceof RegExp)
-                return CsvMapper._validateRegex(fieldValue, validator);
-            if (typeof validator === 'function')
-                return !!validator(fieldValue);
-            if (validator && typeof validator === 'object') {
-                const validationType = validator.type;
-                if (['date', 'time', 'datetime'].includes(validationType)) {
-                    // default datetime value
-                    let validationRegex = /^\d{2,4}([./-])\d{2}\1\d{2,4} \d{2}([.:])\d{2}\2\d{2}$/;
-                    switch (validationType) {
-                        case 'date':
-                            validationRegex = /^\d{2,4}([./-])\d{2}\1\d{2,4}$/;
-                            break;
-                        case 'time':
-                            validationRegex = /^\d{2}([.:])\d{2}\1\d{2}$/;
-                            break;
-                    }
-                    const format = validator.format ?? null;
-                    if (format !== null) {
-                        validationRegex = CsvMapper.dateFormatToRegex(format);
-                    }
-                    return CsvMapper._validateRegex(fieldValue, validationRegex);
-                }
-                if (['tel', 'telephone', 'phone'].includes(validationType)) {
-                    const phoneRegex = /^[\d\s()+-]+$/;
-                    return CsvMapper._validateRegex(fieldValue, phoneRegex);
-                }
-                if (validationType === 'email') {
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    return CsvMapper._validateRegex(fieldValue, emailRegex);
-                }
-                if (validationType === 'number') {
-                    const num = Number(String(fieldValue).replace(',', '.'));
-                    if (Number.isNaN(num))
-                        return false;
-                    if (validator.min != null && num < validator.min)
-                        return false;
-                    if (validator.max != null && num > validator.max)
-                        return false;
-                    return true;
-                }
-                if (validationType === 'boolean') {
-                    const s = String(fieldValue).trim().toLowerCase();
-                    return ['1', '0', 'true', 'false', 'yes', 'no', 'y', 'n', ''].includes(s);
-                }
-            }
-            console.error('Invalid validation type given', validator);
-            throw new Error('Invalid validation type given');
-        }
-        static dateFormatToRegex(format, { anchors = true, allowUppercaseMD = true, } = {}) {
-            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            switch (format.toLowerCase()) {
-                case 'iso8601': // example: 2005-08-15T15:52:01+0000
-                    return /^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/;
-                case 'rfc822': // example: Mon, 15 Aug 05 15:52:01 +0000
-                    return /^(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s)?(?:0?[1-9]|[12]\d|3[01])\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s(?:\d{2}|\d{4})\s(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\s(?:[+-](?:[01]\d|2[0-3])[0-5]\d|UT|GMT|[ECMP][SD]T|[A-IK-Z])$/i;
-                case 'rfc850': // example: Monday, 15-Aug-05 15:52:01 UTC
-                    return /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday),\s(0[1-9]|[12]\d|3[01])-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\sGMT$/i;
-                case 'rfc1036': // example: Mon, 15 Aug 05 15:52:01 +0000
-                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(?:0?[1-9]|[12]\d|3[01])\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{2}\s(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\s(?:GMT|[PMCE][SD]T|[+-](?:[01]\d|2[0-3])[0-5]\d)$/i;
-                case 'rfc1123': // example: Mon, 15 Aug 2005 15:52:01 +0000
-                    // 4-digit year; allows GMT/UT or numeric offset
-                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(0[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\s(?:GMT|UT|[+-](?:[01]\d|2[0-3])[0-5]\d)$/i;
-                case 'rfc7231': // example: Sat, 30 Apr 2016 17:52:13 GMT
-                    // IMF-fixdate (HTTP-date) — must be GMT
-                    return /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s(0[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d:[0-5]\d\sGMT$/i;
-                case 'rfc2822': // example: Mon, 15 Aug 2005 15:52:01 +0000
-                    // Optional weekday; 4-digit year; seconds optional; numeric offset or common (obs-zone) names
-                    return /^(?:(Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s)?(0?[1-9]|[12]\d|3[01])\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}\s([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\s(?:[+-](?:[01]\d|2[0-3])[0-5]\d|UT|GMT|[ECMP][SD]T|[A-IK-Z])$/i;
-                case 'w3c': // example: 2005-08-15T15:52:01+00:00
-                    // W3C-DTF (subset of ISO 8601): strict 'T', optional fractional seconds, 'Z' or ±HH:MM
-                    return /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
-            }
-            const map = {
-                // Years
-                'X': '[-+]\\d{4}\\d*', // at least 4-digit year with - for BCE and + for CE, e.g. +0012, -1234, +1066, +2025
-                'Y': '-?\\d{4}\\d*', // at least 4-digit year, e.g. 0012, -1234, 1066, 2025
-                'y': '-?\\d+',
-                // Months
-                'F': '(?:(?i)January|February|March|April|May|June|July|August|September|October|November|December)',
-                'M': '(?:(?i)Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)',
-                'm': '(?:0[1-9]|1[0-2])', // 01-12
-                'n': '(?:[1-9]|1[0-2])', // 1-12 (no leading 0)
-                // Days
-                'l': '(?:(?i)Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)',
-                'D': '(?:(?i)Mon|Tue|Wed|Thu|Fri|Sat|Sun)',
-                'd': '(?:0[1-9]|[12]\\d|3[01])', // 01-31
-                'j': '(?:[1-9]|[12]\\d|3[01])', // 1-31 (no leading 0)
-                'S': '(?:(?i)st|nd|rd|th)', // 1st, 2nd, 3rd, 4th, etc.
-                // Hours / minutes / seconds
-                'a': '(am|pm)',
-                'A': '(AM|PM)',
-                'h': '(?:[0][0-9]|1[0-2])', // 00-12
-                'H': '(?:[01]\\d|2[0-3])', // 00-23
-                'g': '(?:\\d|1[0-2])', // 0-12
-                'G': '(?:\\d|1\\d|2[0-3])', // 0-23
-                'i': '[0-5]\\d', // 00-59
-                's': '[0-5]\\d', // 00-59
-                // Misc handy ones if you need them later:
-                'U': '\\d+', // seconds since Unix epoch
-            };
-            if (allowUppercaseMD) {
-                map['M'] = map['m'];
-                map['D'] = map['d'];
-            }
-            let out = '';
-            for (let i = 0; i < format.length; i++) {
-                const ch = format[i];
-                // Backslash escapes the next character (PHP-style)
-                if (ch === '\\') {
-                    i++;
-                    if (i < format.length)
-                        out += esc(format[i]);
-                    continue;
-                }
-                out += map[ch] || esc(ch);
-            }
-            return new RegExp((anchors ? '^' : '') + out + (anchors ? '$' : ''));
-        }
-        static _validateRegex(value, regex) {
-            return regex.test(String(value));
-        }
-        static escape(s) {
-            return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c] || c));
         }
     }
     // Attach UI renderers as static properties for easy access

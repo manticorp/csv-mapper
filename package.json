@@ -1,5 +1,5 @@
 {
-  "name": "csv-mapper",
+  "name": "@manticorp/csv-mapper",
   "version": "0.1.0",
   "description": "CSV column mapper for the browser with optional UI, auto-mapping, transforms, validation, and robust parsing via PapaParse.",
   "keywords": [
@@ -71,6 +71,7 @@
     "rollup-plugin-delete": "^3.0.1",
     "ts-jest": "^29.4.1",
     "tslib": "^2.8.1",
+    "typedoc": "^0.28.12",
     "typescript": "^5.9.2"
   },
   "dependencies": {

@@ -25,6 +25,54 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+app.get('/simple', (req, res) => {
+    res.sendFile(path.join(__dirname, 'simple.html'));
+});
+
+app.post('/upload', upload.single('csv'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                error: 'No file uploaded'
+            });
+        }
+
+        // Get the CSV content
+        const csvContent = req.file.buffer.toString('utf-8');
+
+        // Get mapping data if provided
+        const mappingData = req.body.mapping ? JSON.parse(req.body.mapping) : null;
+
+        console.log('=== CSV Upload Received ===');
+        console.log('Original filename:', req.file.originalname);
+        console.log('File size:', req.file.size, 'bytes');
+        console.log('Mapping data:', mappingData);
+        console.log('CSV Content:');
+        console.log(csvContent);
+        console.log('=========================');
+
+        // Echo back the data
+        res.json({
+            success: true,
+            message: 'CSV received and processed successfully',
+            data: {
+                originalFilename: req.file.originalname,
+                fileSize: req.file.size,
+                csvContent: csvContent,
+                mappingData: mappingData,
+                rowCount: csvContent.split('\n').filter(line => line.trim()).length
+            }
+        });
+
+    } catch (error) {
+        console.error('Error processing CSV:', error);
+        res.status(500).json({
+            error: 'Failed to process CSV',
+            details: error.message
+        });
+    }
+});
+
 // Handle CSV upload
 app.post('/upload-csv', upload.single('csv'), (req, res) => {
     try {

@@ -1,25 +1,20 @@
 import { Csv } from "./csv/csv";
 import { CsvRow } from "./csv/row";
-import { TransformOptions } from "./transform/dataTransformer";
+import { TransformOptions } from "./transform/defaultDataTransformer";
+/**
+ * @expand
+ */
 export interface CsvDialect {
     separator: string;
     enclosure: string;
     escape: string | null;
 }
 export type CsvMapping = Record<string, string | string[]>;
-export interface ColumnSpec {
-    name: string;
-    title?: string;
-    outputHeader?: string;
-    defaultValue?: any;
-    required?: boolean;
-    allowDuplicates?: boolean;
-    allowMultiple?: boolean;
-    match?: RegExp | ((header: string) => boolean);
-    transform?: (value: any, row: Record<string, any>) => any;
-    validate?: RegExp | ((value: any) => boolean) | ValidationRule;
-    validationMessage?: string;
-    validationSuffix?: string;
+export type TransformFunction = (value: any, row: number, column: string | number, spec: ColumnSpec) => any;
+export type TransformType = 'number' | 'boolean' | 'date' | 'string' | 'uppercase' | 'lowercase' | 'trim' | 'ascii' | 'kebab' | 'snake' | 'screaming_snake' | 'title' | 'pascal' | 'camel';
+export interface TransformRule {
+    type: TransformType | TransformType[];
+    format?: string | TransformFunction;
 }
 export type ValidationType = 'number' | 'boolean' | 'email' | 'phone' | 'tel' | 'telephone' | 'date' | 'time' | 'datetime';
 export interface ValidationRule {
@@ -28,14 +23,47 @@ export interface ValidationRule {
     max?: number;
     format?: string;
 }
+export interface ColumnSpec {
+    /** The name of the column. Is the default value for the UI title and output header */
+    name: string;
+    /** The title of the column. Used for the UI. */
+    title?: string;
+    /** Description of the column. Used for the UI as a tooltip. */
+    description?: string;
+    /** A comment that appears under the select in the UI */
+    comment?: string;
+    /** The header name to use for the output CSV. */
+    outputHeader?: string;
+    defaultValue?: any;
+    required?: boolean;
+    allowDuplicates?: boolean;
+    match?: RegExp | ((header: string) => boolean);
+    transform?: TransformRule | TransformType | (TransformType | TransformFunction)[] | TransformFunction;
+    validate?: ValidationType | RegExp | ((value: any) => boolean) | ValidationRule;
+    validationMessage?: string;
+}
+/**
+ * @expand
+ */
+export interface RequiredColumnValidationResult {
+    isValid: boolean;
+    missingRequired: string[];
+    mappedTargets: string[];
+}
+/**
+ * @expand
+ */
 export interface MappingResult {
     isValid: boolean;
     missingRequired: string[];
     mappedColumns: string[];
 }
+/**
+ * @expand
+ */
 export interface MappedOutput {
     data: Csv;
-    csv: string | null;
+    csv: string;
     validation: ValidationResult;
 }
 export interface ValidationError {
@@ -45,6 +73,9 @@ export interface ValidationError {
     message: string;
     value: any;
 }
+/**
+ * @expand
+ */
 export interface ValidationResult {
     errors: ValidationError[];
     totalRows: number;
@@ -54,11 +85,14 @@ export interface ValidationResult {
 }
 export interface ParseOptions {
     headers?: boolean;
-    separator?: string;
-    enclosure?: string;
-    escape?: string;
+    delimiter?: string;
+    quoteChar?: string;
+    escapeChar?: string;
     guessMaxLines?: number;
 }
+/**
+ * @expand
+ */
 export interface ParseResult {
     headers: string[];
     rows: Record<string, any>[];
@@ -66,9 +100,9 @@ export interface ParseResult {
     dialect: CsvDialect;
 }
 export interface DetectDialectOptions {
-    separator?: string | null | undefined;
-    enclosure?: string | null | undefined;
-    escape?: string | null | undefined;
+    delimiter?: string | null | undefined;
+    quoteChar?: string | null | undefined;
+    escapeChar?: string | null | undefined;
     guessMaxLines?: number;
 }
 export interface CsvParser {
@@ -108,6 +142,9 @@ export interface UIRenderOptions {
     mappingMode: MappingMode;
     allowMultipleSelection?: boolean;
 }
+export interface DataTransformer extends EventTarget {
+    transform(inputCsv: Csv, mapping: CsvMapping, columnSpecs: ColumnSpec[]): MappedOutput;
+}
 export interface UIRenderer {
     /**
      * Render the mapping interface
@@ -115,9 +152,8 @@ export interface UIRenderer {
     render(container: HTMLElement, options: UIRenderOptions): void;
     /**
      * Set up event listeners for mapping changes
-     * @param onMappingChange Callback when user changes a mapping
      */
-    onMappingChange(callback: (sourceHeader: string, targetColumn: string) => CsvMapping): void;
+    onMappingChange(callback: (sourceHeader: string, targetColumn: string | string[]) => CsvMapping): void;
     /**
      * Update the validation display
      */
@@ -136,25 +172,55 @@ export interface UIRenderer {
     showMessage?(message: string): void;
 }
 export type MappingMode = 'csvToConfig' | 'configToCsv';
+export type UIRendererOption = 'default';
 export interface CsvMapperOptions {
-    separator?: string;
-    enclosure?: string;
-    escape?: string;
-    guessMaxLines?: number;
-    output?: Partial<TransformOptions>;
-    headers?: boolean;
-    remap?: boolean;
-    showUserControls?: boolean;
-    mappingInput?: HTMLElement | string | null;
-    controlsContainer?: HTMLElement | string | null;
+    /**
+     * The column specification.
+     */
     columns?: (string | ColumnSpec)[];
+    /** Whether the input will have headers */
+    headers?: boolean;
+    /** The input delimiter - leave blank for auto detect */
+    delimiter?: string;
+    /** The input quote char - leave blank for auto detect */
+    quoteChar?: string;
+    /** The input escape char - leave blank for auto detect */
+    escapeChar?: string;
+    /** CSV output formatting options. */
+    output?: Partial<TransformOptions>;
+    /** Whether to remap the output CSV and intercept the file input. */
+    remap?: boolean;
+    /**
+     * Whether to show the user remapping UI. Defaults to true
+     * if input is passed or false otherwise.
+     */
+    showUserControls?: boolean;
+    /**
+     * A html element or selector whose value will be set to a JSON
+     * representation of the mapping. This can be used if you want to
+     * pass the mapping on to your server for later use.
+     */
+    mappingInput?: HTMLElement | string | null;
+    /**
+     * A html element or selector where the user controls will be rendered.
+     * If not given and showUserControls is true, the controls will be
+     * rendered after the file input. If given as a selector and no element
+     * is found, the controls will not be rendered.
+     */
+    controlsContainer?: HTMLElement | string | null;
+    /** Similarity threshold for auto column mapping. */
     autoThreshold?: number;
-    allowUnmappedTargets?: boolean;
+    /** Whether to set the input element's validity state on mapping/parse/validation errors. */
     setInputValidity?: boolean;
-    parser?: CsvParser | null;
-    uiRenderer?: UIRenderer | string | null;
+    /** Mapping mode (csvToConfig or configToCsv) - defaults to csvToConfig. */
     mappingMode?: MappingMode;
+    /** Whether to allow an input CSV column to be mapped multiple times. */
     allowMultipleSelection?: boolean;
-    allowMultiple?: boolean;
+    /** CSV Parser so custom parsers can be implemented. */
+    parser?: CsvParser | null;
+    /** UI Renderer so custom UI can be implemented. */
+    uiRenderer?: UIRenderer | UIRendererOption | null;
+    /** Data transformer and validator */
+    transformer?: DataTransformer;
 }
 //# sourceMappingURL=types.d.ts.map

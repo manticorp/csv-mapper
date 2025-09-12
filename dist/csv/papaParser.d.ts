@@ -6,14 +6,14 @@ export declare class PapaParser implements CsvParser {
      * @param options Parsing options including dialect preferences
      * @returns Parsed result with headers, rows, and detected dialect
      */
-    parseCSV(text: string, { headers, separator, enclosure, escape, guessMaxLines }?: ParseOptions): ParseResult;
+    parseCSV(text: string, { headers, delimiter, quoteChar, escapeChar }?: ParseOptions): ParseResult;
     /**
      * Detect CSV dialect (separator, enclosure, escape) from sample text
      * @param text CSV text to analyze
      * @param options Dialect detection options
      * @returns Detected CSV dialect
      */
-    detectDialect(text: string, { separator, enclosure, escape, guessMaxLines }?: DetectDialectOptions): CsvDialect;
+    detectDialect(text: string, { delimiter: separator, quoteChar: enclosure, escapeChar: escape }?: DetectDialectOptions): CsvDialect;
     /**
      * Convert array of values to CSV row string
      * @param arr Array of values to convert

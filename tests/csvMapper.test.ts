@@ -67,7 +67,7 @@ describe('CsvMapper Core', () => {
         parser: customParser
       });
 
-      expect(mapper.parser).toBe(customParser);
+      expect(mapper.getParser()).toBe(customParser);
     });
 
     test('should throw error for non-file input', () => {

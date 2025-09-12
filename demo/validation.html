@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSV Mapper - Validation Refactoring Test</title>
+    <title>CSV Mapper - Validation</title>
     <link href="css/main.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/toolbar/prism-toolbar.min.css" integrity="sha256-jsQbSO1yj62eu6dP6f2fJESRgkHNNEpxrK8NnO6/oyc=" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/match-braces/prism-match-braces.min.css" integrity="sha256-ofzmpw1bhHX6o2yPsxm/qv2HF/pxkmWJhQiMnlQ+4Tw=" crossorigin="anonymous">
@@ -178,8 +178,8 @@ failing row,abc123,Bobbity boo,not a valid email that is actually quite long so 
             logEvent('afterRead', event.detail);
         });
 
-        csvMapper.addEventListener('afterMap', (event) => {
-            logEvent('afterMap', {
+        csvMapper.addEventListener('afterRemap', (event) => {
+            logEvent('afterRemap', {
                 rowCount: event.detail.rows.length,
                 hasCsv: !!event.detail.csv
             });

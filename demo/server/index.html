@@ -152,7 +152,7 @@
             submitBtn.disabled = false;
         });
 
-        csvMapper.addEventListener('afterMap', (e) => {
+        csvMapper.addEventListener('afterRemap', (e) => {
             console.log('Mapping completed:', e.detail);
             remappedCsvContent = e.detail.csv; // Store the remapped CSV
 

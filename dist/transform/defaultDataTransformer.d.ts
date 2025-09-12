@@ -1,17 +1,32 @@
-import { ColumnSpec, MappedOutput, ValidationRule, CsvMapping } from '../types.js';
+import { ColumnSpec, MappedOutput, ValidationRule, CsvMapping, DataTransformer } from '../types.js';
 import { Csv } from '../csv/csv.js';
 export interface TransformOptions {
-    /** Whether to generate remapped CSV output */
-    generateCsv: boolean;
-    /** Output CSV dialect (null to inherit from input) */
+    /** Delimiter to use for output */
     delimiter?: string;
+    /** Quote Char to use for output */
     quoteChar?: string;
+    /** Escape Char to use for output */
     escapeChar?: string;
+    /** Newline character to use for output */
     newline?: string;
-    /** Whether to include validation errors in output */
-    includeErrors: boolean;
+    /** Whether to allow columns from the input CSV that aren't mapped in the output */
+    allowUnmappedTargets: boolean;
+    /**
+     * Function for transforming type="date" columns.
+     * Can accept a date format string (e.g. "YYYY-MM-DD", or "iso8601")
+     * Uses built in best guess otherwise.
+     */
+    dateFormatter?: string | ((value: string) => string);
+    /**
+     * Function for transforming type="date" columns.
+     * Otherwise, transforms all truthy values to 1 and falsy values to 0.
+     */
+    booleanFormatter?: {
+        true: string;
+        false: string;
+    } | ((value: string) => string);
 }
-export declare class DataTransformer extends EventTarget {
+export declare class DefaultDataTransformer extends EventTarget implements DataTransformer {
     private options;
     constructor(options?: Partial<TransformOptions>);
     /**
@@ -23,7 +38,6 @@ export declare class DataTransformer extends EventTarget {
      */
     transform(inputCsv: Csv, mapping: CsvMapping, columnSpecs: ColumnSpec[]): MappedOutput;
     private calculateValidationSummary;
-    private _invertMapping;
     /**
      * Transform individual rows according to column specifications
      * @param inputCsv Source data rows
@@ -32,6 +46,11 @@ export declare class DataTransformer extends EventTarget {
      * @returns Transformed rows with validation errors
      */
     private transformRows;
+    private _guessBoolean;
+    private _transformBoolean;
+    private _transformDate;
+    private _formatDateString;
+    private transformValue;
     /**
      * Generate CSV output from transformed data
      * @param mappedRows Transformed data rows
@@ -61,16 +80,6 @@ export declare class DataTransformer extends EventTarget {
      * @returns True if valid, false otherwise
      */
     static validateValue(fieldValue: any, validator: RegExp | ((value: any) => boolean) | ValidationRule): boolean;
-    /**
-     * Convert date format string to RegExp for validation
-     * @param format Date format string (e.g., 'YYYY-MM-DD')
-     * @param options Validation options
-     * @returns RegExp for validation
-     */
-    static dateFormatToRegex(format: string, { allowSeparators, strictLength }?: {
-        allowSeparators?: boolean | undefined;
-        strictLength?: boolean | undefined;
-    }): RegExp;
     /**
      * Validate value against regex pattern
      * @param value Value to validate
@@ -116,4 +125,4 @@ export declare class DataTransformer extends EventTarget {
      */
     private _valueValidationError;
 }
-//# sourceMappingURL=dataTransformer.d.ts.map
+//# sourceMappingURL=defaultDataTransformer.d.ts.map

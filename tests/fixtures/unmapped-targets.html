@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Unmapped Targets</title>
+    <link href="css/main.css" rel="stylesheet">
+</head>
+<body>
+    <section class="section">
+        <div class="container content">
+            <h1>CSV Mapper - Unmapped targets</h1>
+            <h2>Input CSV</h2>
+            <pre id="input-csv"></pre>
+            <h2>Parsed CSV</h2>
+            <pre id="parsed-csv"></pre>
+            <h2>Column Specification</h2>
+            <pre id="column-specification"></pre>
+            <h2>Mapping</h2>
+            <pre id="mapping"></pre>
+            <h2>Mapping Result</h2>
+            <pre id="mapping-result"></pre>
+            <h2>CSV Result</h2>
+            <pre id="csv-result"></pre>
+            <h2>Expected</h2>
+            <pre id="expected-result"></pre>
+            <h2>Is result expected?</h2>
+            <div id="is-result-okay"></div>
+        </div>
+    </section>
+
+    <script src="../../dist/csv-mapper.umd.js"></script>
+    <script>
+        const mapper = new CsvMapper({
+            columns: [
+                'id',
+                'name'
+            ],
+            output: {
+                newline: '\n',
+                allowUnmappedTargets: true,
+            }
+        });
+
+        mapper.addEventListener('afterRead', (e) => {
+            console.log('afterRead', e.detail);
+        });
+
+        mapper.addEventListener('beforeParseCsv', (e) => {
+            console.log('beforeParseCsv', e.detail);
+            const {csv} = e.detail;
+            document.getElementById('input-csv').innerText = csv;
+        });
+
+        mapper.addEventListener('afterParseCsv', (e) => {
+            console.log('afterParseCsv', e.detail);
+            const {csv} = e.detail;
+            document.getElementById('parsed-csv').innerText = JSON.stringify(csv, null, 2);
+        });
+
+        mapper.addEventListener('beforeMap', (e) => {
+            console.log('beforeMap', e.detail);
+        });
+        mapper.addEventListener('afterMap', (e) => {
+            console.log('afterMap', e.detail);
+        });
+        mapper.addEventListener('mappingChange', (e) => {
+            console.log('mappingChange', e.detail);
+        });
+        mapper.addEventListener('mappingFailed', (e) => {
+            console.log('mappingFailed', e.detail);
+        });
+        mapper.addEventListener('mappingSuccess', (e) => {
+            console.log('mappingSuccess', e.detail);
+        });
+        mapper.addEventListener('afterValidation', (e) => {
+            console.log('afterValidation', e.detail);
+        });
+        mapper.addEventListener('transformationFail', (e) => {
+            console.log('transformationFail', e.detail);
+        });
+        mapper.addEventListener('validationFail', (e) => {
+            console.log('validationFail', e.detail);
+        });
+        mapper.addEventListener('validationFailed', (e) => {
+            console.log('validationFailed', e.detail);
+        });
+        mapper.addEventListener('validationSuccess', (e) => {
+            console.log('validationSuccess', e.detail);
+        });
+
+        const csv = `sku,title,category,description,extra
+1,Product A,Category 1,Description A,Foo
+2,Product B,Category 1,Description B,Bar
+3,Product C,Category 3,,Baz`;
+
+        const expectedResult = `id,name,category,description,extra
+1,Product A,Category 1,Description A,Foo
+2,Product B,Category 1,Description B,Bar
+3,Product C,Category 3,,Baz`;
+
+        mapper.setMapping({
+            sku: 'id',
+            title: 'name',
+        });
+
+        const result = mapper.mapCsv(csv);
+        console.log(result);
+
+        document.getElementById('column-specification').innerText = JSON.stringify(mapper.columns, null, 2);
+        document.getElementById('mapping').innerText = JSON.stringify(mapper.mapping, null, 2);
+        document.getElementById('mapping-result').innerText = JSON.stringify(result.data, null, 2);
+        document.getElementById('csv-result').innerText = result.csv;
+        document.getElementById('expected-result').innerText = expectedResult;
+
+        if (result.csv === expectedResult) {
+            document.getElementById('is-result-okay').innerText = 'Yes';
+        } else {
+            document.getElementById('is-result-okay').innerText = 'No';
+        }
+    </script>
+</body>
+</html>

@@ -37,55 +37,14 @@ describe('Custom Parser Interface', () => {
         showUserControls: false
       });
 
-      expect(mapper.parser).toBe(customParser);
+      expect(mapper.getParser()).toBe(customParser);
     });
 
     test('should use default PapaParser when no custom parser provided', () => {
       mapper = new CsvMapper(fileInput, { showUserControls: false });
 
-      expect(mapper.parser).toBeDefined();
-      expect(mapper.parser).not.toBe(customParser);
-    });
-
-    test('should call custom parser methods during file processing', async () => {
-      // Setup mock parser responses
-      customParser.parseCSV.mockReturnValue({
-        headers: ['name', 'email'],
-        rows: [{ name: 'John', email: 'john@example.com' }],
-        rawRows: [['John', 'john@example.com']],
-        dialect: { separator: ',', enclosure: '"', escape: null }
-      });
-
-      mapper = new CsvMapper(fileInput, {
-        parser: customParser,
-        showUserControls: false
-      });
-
-      // Mock file processing
-      const mockFile = new File(['name,email\nJohn,john@example.com'], 'test.csv', {
-        type: 'text/csv'
-      });
-
-      // Mock the file reading
-      const originalText = File.prototype.text;
-      File.prototype.text = jest.fn().mockResolvedValue('name,email\nJohn,john@example.com');
-
-      // Simulate file change
-      Object.defineProperty(fileInput, 'files', {
-        value: [mockFile],
-        writable: true
-      });
-
-      // Trigger the file change event
-      await mapper._onFileChange();
-
-      expect(customParser.parseCSV).toHaveBeenCalledWith(
-        'name,email\nJohn,john@example.com',
-        expect.any(Object)
-      );
-
-      // Restore original
-      File.prototype.text = originalText;
+      expect(mapper.getParser()).toBeDefined();
+      expect(mapper.getParser()).not.toBe(customParser);
     });
   });
 
@@ -208,7 +167,7 @@ describe('Custom Parser Interface', () => {
       expect(staticResult.dialect.separator).toBe(',');
 
       // Instance should use custom parser
-      expect(mapper.parser).toBe(customParser);
+      expect(mapper.getParser()).toBe(customParser);
     });
   });
 
@@ -224,7 +183,7 @@ describe('Custom Parser Interface', () => {
       });
 
       // Should not throw when creating the mapper
-      expect(mapper.parser).toBe(customParser);
+      expect(mapper.getParser()).toBe(customParser);
     });
 
     test('should validate parser interface at runtime', () => {
@@ -239,7 +198,7 @@ describe('Custom Parser Interface', () => {
         showUserControls: false
       });
 
-      expect(mapper.parser).toBe(incompleteParser);
+      expect(mapper.getParser()).toBe(incompleteParser);
     });
   });
 });

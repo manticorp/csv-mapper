@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Mapper - Many to Many Mapping Demo</title>
+    <link href="css/main.css" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/df2086130b.js" crossorigin="anonymous"></script>
+    <style>
+    </style>
+</head>
+<body>
+    <section class="section">
+        <div class="container content">
+            <h1>CsvMapper - Many to Many Mapping Demo</h1>
+
+            <p>This demo showcases the ability to map one CSV column to multiple output columns and vice versa.</p>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container content">
+            <h3>Upload</h3>
+            <div class="mode-switch block" id="mapperswitch">
+                <label>Current Mode: CSV → Config</label>
+                <button class="button is-small" id="switch-mode" onclick="toggleMode()">Switch to Config → CSV</button>
+            </div>
+
+            <div class="form-group">
+                <div class="file">
+                    <label class="file-label" for="csvFile">
+                        <input class="file-input" id="csvFile" type="file" accept=".csv" required>
+                        <span class="file-cta">
+                        <span class="file-icon">
+                            <i class="fas fa-upload"></i>
+                        </span>
+                        <span class="file-label"> Choose a file… </span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+            <div id="controls"></div>
+            <div id="result" class="results"></div>
+        </div>
+    </section>
+    <section class="section">
+        <div class="container content">
+            <h3>Sample CSV Data</h3>
+            <p>You can copy this sample data and save it as a .csv file to test:</p>
+            <pre>user_id,full_name,email_address,phone_number,status
+1,John Doe,john@example.com,555-1234,active
+2,Jane Smith,jane@example.com,555-5678,inactive
+3,Bob Johnson,bob@example.com,555-9012,active</pre>
+        </div>
+    </section>
+
+    <!-- Include the UMD build -->
+    <script src="../dist/csv-mapper.umd.min.js"></script>
+
+    <script>
+        const columnSpecs = [
+            'product_id',
+            'name',
+            'price',
+            { name: 'category', allowDuplicates: true },
+            'stock',
+            'other'
+        ];
+
+        // Demo 1: CSV → Config (default mode)
+        const mapper = new CsvMapper('#csvFile', {
+            columns: columnSpecs,
+            controlsContainer: '#controls',
+            mappingMode: 'configToCsv',
+            allowMultipleSelection: true,
+        });
+
+        const csv = `product_id,name,price,category1,category2,stock,unused_column
+1,Widget A,19.99,Gadgets,Widgets,100,
+2,Widget B,29.99,Widgets,,50,`;
+
+        // Event listeners for results
+        mapper.addEventListener('afterRemap', (event) => {
+            console.log('afterRemap', event.detail);
+            const { rows, csv } = event.detail;
+            document.getElementById('result').innerHTML = `
+                <h4>Mapped Data (CSV → Config):</h4>
+                <pre>${JSON.stringify(rows.slice(0, 3), null, 2)}${rows.length > 3 ? '\n... and ' + (rows.length - 3) + ' more rows' : ''}</pre>
+                <h4>Generated CSV ${new Date().toISOString()}:</h4>
+                <pre>${csv}</pre>
+            `;
+        });
+
+        mapper.setCsv(csv);
+        mapper.autoMap();
+        mapper.addColumnMapping('category1', 'category');
+        mapper.addColumnMapping('category2', 'category');
+        console.log(mapper.getMappedResult());
+
+        function updateModeDisplay() {
+            document.getElementById(`mapperswitch`).innerHTML = `
+                <label>Current Mode: ${mapper.opts.mappingMode === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV'}</label>
+                <button class="button is-small" onclick="toggleMode()">Switch to ${mapper.opts.mappingMode === 'csvToConfig' ? 'Config → CSV' : 'CSV → Config'}</button>
+            `;
+        }
+
+        function toggleMode() {
+            if (mapper) {
+                mapper.opts.mappingMode = mapper.opts.mappingMode === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
+                mapper.render();
+                updateModeDisplay();
+            }
+        }
+        updateModeDisplay();
+    </script>
+</body>
+</html>

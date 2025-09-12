@@ -80,11 +80,11 @@ test.describe('CSV Mapper Browser Tests', () => {
     });
 
     const uploadButton = page.locator('button:has-text("Upload"), button:has-text("Process"), button[type="submit"]');
-    if (await uploadButton.isVisible()) {
-      await uploadButton.click();
+    if (await uploadButton.isVisible({timeout: 500})) {
+      await uploadButton.click({timeout: 500});
     }
 
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Should successfully process the file (mapping interface should appear)
     const mappingTable = page.locator('table');

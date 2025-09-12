@@ -29,7 +29,7 @@
 
             <div class="mode-switch block" id="mapper1switch">
                 <label>Current Mode: CSV → Config</label>
-                <button class="button is-small" id="switch-mode" onclick="toggleMode(1)">Switch to Config → CSV</button>
+                <button class="button is-small" id="switch-mode" onclick="toggleMode()">Switch to Config → CSV</button>
             </div>
 
             <div class="form-group">
@@ -73,19 +73,22 @@
             },
             'name',
             'price',
-            'category',
+            {
+                name: 'category',
+                allowDuplicates: true
+            },
             'stock'
         ];
 
         // Demo 1: CSV → Config (default mode)
-        const mapper1 = new CsvMapper('#csvFile1', {
+        const mapper = new CsvMapper('#csvFile1', {
             columns: columnSpecs,
             controlsContainer: '#controls1',
             mappingMode: 'csvToConfig'
         });
 
         // Event listeners for results
-        mapper1.addEventListener('afterMap', (event) => {
+        mapper.addEventListener('afterRemap', (event) => {
             const { rows, csv } = event.detail;
             document.getElementById('result1').innerHTML = `
                 <h4>Mapped Data (CSV → Config):</h4>
@@ -95,26 +98,28 @@
             `;
         });
 
-        function toggleMode(which) {
-            let mapper;
-            switch (which) {
-                case 1:
-                    mapper = mapper1;
-                    break;
-            }
-            if (mapper) {
-                mapper.opts.mappingMode = mapper.opts.mappingMode === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
-                mapper._renderControls();
-                document.getElementById(`mapper${which}switch`).innerHTML = `
-                    <label>Current Mode: ${mapper.opts.mappingMode === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV'}</label>
-                    <button class="button is-small" onclick="toggleMode(${which})">Switch to ${mapper.opts.mappingMode === 'csvToConfig' ? 'Config → CSV' : 'CSV → Config'}</button>
-                `;
-            }
+        const csv = `product_id,name,price,category1,category2,stock
+1,Widget A,19.99,Gadgets,Widgets,100
+2,Widget B,29.99,Widgets,,50`;
+
+        mapper.setCsv(csv);
+        mapper.autoMap();
+        mapper.addColumnMapping('category1', 'category');
+        mapper.addColumnMapping('category2', 'category');
+        console.log(mapper.getMappedResult());
+
+        function toggleMode() {
+            mapper.opts.mappingMode = mapper.opts.mappingMode === 'csvToConfig' ? 'configToCsv' : 'csvToConfig';
+            mapper._renderControls();
+            document.getElementById(`mapper${which}switch`).innerHTML = `
+                <label>Current Mode: ${mapper.opts.mappingMode === 'csvToConfig' ? 'CSV → Config' : 'Config → CSV'}</label>
+                <button class="button is-small" onclick="toggleMode()">Switch to ${mapper.opts.mappingMode === 'csvToConfig' ? 'Config → CSV' : 'CSV → Config'}</button>
+            `;
         }
 
         // Add some helpful console logging
         console.log('CsvMapper Mapping Modes Demo loaded');
-        console.log('Demo 1 (CSV → Config):', mapper1);
+        console.log('Demo 1 (CSV → Config):', mapper);
     </script>
 </body>
 </html>

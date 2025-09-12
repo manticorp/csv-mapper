@@ -1,0 +1,8 @@
+{
+    "entryPoints": [
+        "src/csvMapper.ts",
+        "src/csv/csv.ts",
+        "src/csv/row.ts",
+    ],
+    "out": "docs/code"
+}

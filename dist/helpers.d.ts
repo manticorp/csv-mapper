@@ -1,3 +1,4 @@
+import { CsvMapping } from "./types";
 export declare const IS_DEBUG: boolean;
 export declare const limitString: (str: string, length: number, rest?: string) => string;
 export declare const stringFormat: (str: string, format: Record<string, any>) => string;
@@ -23,4 +24,5 @@ export declare const debugTable: ((...args: any[]) => void) | {
 export declare const isNodeEl: (x: any) => x is Element;
 export declare const isHtmlInput: (x: any) => x is HTMLInputElement;
 export declare const isPlainObject: (x: any) => x is Record<string, unknown>;
+export declare const invertMapping: (mapping: CsvMapping) => CsvMapping;
 //# sourceMappingURL=helpers.d.ts.map

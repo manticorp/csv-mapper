@@ -5,32 +5,43 @@
  * including validation, custom transforms, and output generation in various formats.
  */
 
-import { ColumnSpec, ValidationError, MappedOutput, ValidationResult, ValidationType, ValidationRule, CsvMapping, CsvDialect } from '../types.js';
-import { PapaParser } from '../csv/papaParser.js';
-import { limitString, stringFormat, debug, logger } from '../helpers.js';
+import { ColumnSpec, ValidationError, MappedOutput, ValidationResult,  ValidationRule, CsvMapping, TransformType, DataTransformer, TransformFunction } from '../types.js';
+import Str from '../str.js';
 import { Csv } from '../csv/csv.js';
-import { CsvRow } from '../csv/row.js';
+import { DateFormatter } from './dateFormatter.js';
+import { invertMapping } from '../helpers.js';
 
 export interface TransformOptions {
-  /** Whether to generate remapped CSV output */
-  generateCsv: boolean;
-  /** Output CSV dialect (null to inherit from input) */
+  /** Delimiter to use for output */
   delimiter?: string;
+  /** Quote Char to use for output */
   quoteChar?: string;
+  /** Escape Char to use for output */
   escapeChar?: string;
+  /** Newline character to use for output */
   newline?: string;
-  /** Whether to include validation errors in output */
-  includeErrors: boolean;
+  /** Whether to allow columns from the input CSV that aren't mapped in the output */
+  allowUnmappedTargets: boolean;
+  /**
+   * Function for transforming type="date" columns.
+   * Can accept a date format string (e.g. "YYYY-MM-DD", or "iso8601")
+   * Uses built in best guess otherwise.
+   */
+  dateFormatter?: string|((value: string) => string);
+  /**
+   * Function for transforming type="date" columns.
+   * Otherwise, transforms all truthy values to 1 and falsy values to 0.
+   */
+  booleanFormatter?: { true: string, false: string } | ((value: string) => string);
 }
 
-export class DataTransformer extends EventTarget {
+export class DefaultDataTransformer extends EventTarget implements DataTransformer {
   private options: TransformOptions;
 
   constructor(options: Partial<TransformOptions> = {}) {
     super();
     this.options = Object.assign({
-      generateCsv: true,
-      includeErrors: true
+      allowUnmappedTargets: false,
     }, options ?? {});
   }
 
@@ -60,13 +71,7 @@ export class DataTransformer extends EventTarget {
     // Transform rows
     const {data, errors} = this.transformRows(inputCsv, mapping, columnSpecs);
 
-    debug({data, errors});
-
-    // Generate CSV if requested (simple format only)
-    let csv: string | null = null;
-    if (this.options.generateCsv) {
-      csv = this.generateCsv(data);
-    }
+    const csv = this.generateCsv(data);
 
     // Calculate validation summary
     const validation = this.calculateValidationSummary(data, errors);
@@ -92,23 +97,6 @@ export class DataTransformer extends EventTarget {
     };
   }
 
-  private _invertMapping(mapping: CsvMapping): CsvMapping {
-    const inverted: CsvMapping = {};
-    for (let [source, targets] of Object.entries(mapping)) {
-      if (typeof targets === 'string') {
-        targets = [targets];
-      }
-      for (const target of targets) {
-        if (Array.isArray(inverted[target])) {
-          inverted[target].push(source);
-        } else {
-          inverted[target] = [source];
-        }
-      }
-    }
-    return inverted;
-  }
-
   /**
    * Transform individual rows according to column specifications
    * @param inputCsv Source data rows
@@ -123,12 +111,12 @@ export class DataTransformer extends EventTarget {
   ): {data: Csv, errors: ValidationError[]} {
     let rowIndex = 0;
     const errors: ValidationError[] = [];
-    const inverseMapping = this._invertMapping(mapping);
+    const inverseMapping = invertMapping(mapping);
     let data = inputCsv.clone();
     data.remapColumns(mapping);
     const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
 
-    if (data.headers) {
+    if (data.headers && !this.options.allowUnmappedTargets) {
       const toRemove = data.headers?.filter(header => !inverseMapping[header]);
       toRemove.forEach(col => data.removeColumn(col));
     }
@@ -151,23 +139,17 @@ export class DataTransformer extends EventTarget {
         const spec = colCache.get(header) ?? columnSpecs.find(spec => (spec.outputHeader ?? spec.name ?? spec.title) === header);
         colCache.set(header, spec ?? null);
         if (!spec) {
-          throw new Error(`Column spec not found for ${header}`);
+          continue;
         }
 
         // Apply custom transformation if specified
         let transformedValue = value;
-        if (spec.transform && typeof spec.transform === 'function') {
+        if (spec.transform) {
           try {
-            const rowObject: Record<string, any> = {};
-            if (inputCsv.headers) {
-              inputCsv.headers.forEach(header => {
-                rowObject[header] = sourceRow.get(header) || '';
-              });
-            }
-            transformedValue = spec.transform(value, rowObject);
+            transformedValue = this.transformValue(transformedValue, spec.transform, rowIndex, header, spec);
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._transformationError(rowIndex, spec.title || spec.name, transformedValue, msg);
+            this._transformationError(rowIndex, header, transformedValue, msg);
             continue;
           }
         }
@@ -175,7 +157,7 @@ export class DataTransformer extends EventTarget {
         // Validate the transformed value
         if (spec.validate !== undefined) {
           const validate = typeof spec.validate === 'string' ? {type: spec.validate} : spec.validate;
-          const isValid = DataTransformer.validateValue(transformedValue, validate);
+          const isValid = DefaultDataTransformer.validateValue(transformedValue, validate);
 
           if (!isValid) {
             let message: string;
@@ -211,6 +193,118 @@ export class DataTransformer extends EventTarget {
     }
 
     return {data, errors};
+  }
+
+  private _guessBoolean(val: any): boolean {
+    if (typeof val === 'string') {
+      val = val.trim().toLowerCase();
+      if (['true', '1', 'yes', 'y'].includes(val)) return true;
+      if (['false', '0', 'no', 'n'].includes(val)) return false;
+    }
+    return Boolean(val);
+  }
+
+  private _transformBoolean(value: any): string {
+    if (this.options.booleanFormatter) {
+      if (typeof this.options.booleanFormatter === 'function') {
+        value = this.options.booleanFormatter(value);
+      } else if (typeof this.options.booleanFormatter === 'object') {
+        value = this._guessBoolean(value);
+        value = value ? this.options.booleanFormatter.true : this.options.booleanFormatter.false;
+      } else {
+        throw new Error('Invalid booleanFormatter option');
+      }
+    } else {
+      value = this._guessBoolean(value) ? '1' : '0';
+    }
+    return value;
+  }
+
+  private _transformDate(value: any, row: number, column: string|number, spec: ColumnSpec) {
+    let formatter: string|TransformFunction|undefined = this.options.dateFormatter;
+    if (
+      typeof spec.transform === 'object' &&
+      spec.transform !== null &&
+      'format' in spec.transform &&
+      typeof spec.transform.format !== 'undefined'
+    ) {
+      formatter = spec.transform.format;
+    }
+    if (formatter) {
+      if (typeof formatter === 'function') {
+        value = formatter(value, row, column, spec);
+      } else if (typeof formatter === 'string') {
+        value = this._formatDateString(value, formatter);
+      }
+    } else {
+      value = `${new Date(value)}`;
+    }
+    return value;
+  }
+
+  private _formatDateString(value: any, format: string): string {
+    return DateFormatter.format(value, format);
+  }
+
+  private transformValue(value: any, transform: ColumnSpec['transform'], rowIndex: number, column: string|number, spec: ColumnSpec): any {
+    if (typeof transform === 'string') {
+      transform = transform.split('|').map(t => t.trim()) as TransformType[];
+    }
+    if (Array.isArray(transform)) {
+      for (const t of transform) {
+        if (typeof t === 'string') {
+          switch (t) {
+            case 'number':
+              value = String(Number(value));
+              break;
+            case 'boolean':
+              value = this._transformBoolean(value);
+              break;
+            case 'date':
+              value = this._transformDate(value, rowIndex, column, spec);
+              break;
+            case 'string':
+              value = String(value);
+              break;
+            case 'uppercase':
+              value = String(value).toUpperCase();
+              break;
+            case 'lowercase':
+              value = String(value).toLowerCase();
+              break;
+            case 'trim':
+              value = String(value).trim();
+              break;
+            case 'kebab':
+              value = Str.kebabCase(String(value));
+              break;
+            case 'snake':
+              value = Str.snakeCase(String(value));
+              break;
+            case 'screaming_snake':
+              value = Str.screamingSnakeCase(String(value));
+              break;
+            case 'title':
+              value = Str.titleCase(String(value));
+              break;
+            case 'pascal':
+              value = Str.pascalCase(String(value));
+              break;
+            case 'camel':
+              value = Str.camelCase(String(value));
+              break;
+            case 'ascii':
+              value = Str.ascii(String(value));
+              break;
+          }
+        } else if (typeof t === 'function') {
+          value = t(value, rowIndex, column, spec);
+        }
+      }
+    } else if (typeof transform === 'function') {
+      value = transform(value, rowIndex, column, spec);
+    }
+    return value;
   }
 
   /**
@@ -257,10 +351,7 @@ export class DataTransformer extends EventTarget {
 
     const {data, errors} = this.transformRows(emptyCsv, mapping, columnSpecs);
 
-    let csv: string | null = null;
-    if (this.options.generateCsv) {
-      csv = this.generateCsv(emptyCsv);
-    }
+    const csv = this.generateCsv(emptyCsv);
 
     const validation = this.calculateValidationSummary(data, errors);
     return { data, csv, validation };
@@ -316,7 +407,7 @@ export class DataTransformer extends EventTarget {
     }
 
     if (validator instanceof RegExp) {
-      return DataTransformer._validateRegex(fieldValue, validator);
+      return DefaultDataTransformer._validateRegex(fieldValue, validator);
     }
 
     if (typeof validator === 'function') {
@@ -332,7 +423,7 @@ export class DataTransformer extends EventTarget {
       // Handle ValidationRule based on its type
       switch (rule.type) {
         case 'email':
-          return DataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
+          return DefaultDataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
         case 'number':
           const num = Number(fieldValue);
           if (isNaN(num) || !isFinite(num)) return false;
@@ -343,16 +434,15 @@ export class DataTransformer extends EventTarget {
           return ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(String(fieldValue).toLowerCase());
         case 'date':
           if (rule.format) {
-            const regex = DataTransformer.dateFormatToRegex(rule.format);
-            return regex.test(String(fieldValue));
+            return DateFormatter.validateFormat(String(fieldValue), rule.format);
           }
           return !isNaN(Date.parse(fieldValue));
         case 'phone':
         case 'tel':
         case 'telephone':
-          return DataTransformer._validateRegex(fieldValue, /^[\+]?[\d\s\-\(\)\.]{7,15}$/);
+          return DefaultDataTransformer._validateRegex(fieldValue, /^[\+]?[\d\s\-\(\)\.]{7,15}$/);
         case 'time':
-          return DataTransformer._validateRegex(fieldValue, /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/);
+          return DefaultDataTransformer._validateRegex(fieldValue, /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/);
         case 'datetime':
           return !isNaN(Date.parse(fieldValue));
         default:
@@ -361,50 +451,6 @@ export class DataTransformer extends EventTarget {
     }
 
     return true;
-  }
-
-  /**
-   * Convert date format string to RegExp for validation
-   * @param format Date format string (e.g., 'YYYY-MM-DD')
-   * @param options Validation options
-   * @returns RegExp for validation
-   */
-  static dateFormatToRegex(format:string, {
-    allowSeparators = true,
-    strictLength = false
-  } = {}): RegExp {
-    // Common format mappings
-    const patterns: Record<string, string> = {
-      'YYYY': '\\d{4}',
-      'YY': '\\d{2}',
-      'MM': '\\d{1,2}',
-      'DD': '\\d{1,2}',
-      'HH': '\\d{1,2}',
-      'mm': '\\d{1,2}',
-      'ss': '\\d{1,2}'
-    };
-
-    if (strictLength) {
-      patterns['MM'] = '\\d{2}';
-      patterns['DD'] = '\\d{2}';
-      patterns['HH'] = '\\d{2}';
-      patterns['mm'] = '\\d{2}';
-      patterns['ss'] = '\\d{2}';
-    }
-
-    let regex = format;
-    
-    // Replace format tokens with regex patterns
-    for (const [token, pattern] of Object.entries(patterns)) {
-      regex = regex.replace(new RegExp(token, 'g'), pattern);
-    }
-
-    // Handle separators
-    if (allowSeparators) {
-      regex = regex.replace(/[-\/\.\s:]/g, '[-\\/\\.\\s:]');
-    }
-
-    return new RegExp(`^${regex}$`);
   }
 
   /**

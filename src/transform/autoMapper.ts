@@ -6,7 +6,7 @@ export class AutoMapper {
         headers: string[],
         columns: ColumnSpec[],
         mode: MappingMode = 'csvToConfig',
-        autoThreshold = 0.9,
+        autoThreshold = 0.8,
         existingMapping: CsvMapping = {}
     ) {
         const mappingMode = mode || 'csvToConfig';

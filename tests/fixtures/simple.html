@@ -16,7 +16,7 @@
             setInputValidity: true,
             columns: [
                 {name: 'id', required: true},
-                {name: 'name', required: true},
+                {name: 'name', required: true, description: 'The name of the item'},
                 {name: 'active', required: true, validate: 'boolean', defaultValue: true},
                 {name: 'category', allowMultiple: true}
             ],

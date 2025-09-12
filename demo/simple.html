@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSV Mapper - Simple Browser Example</title>
     <link href="css/main.css" rel="stylesheet">
+    <script src="https://kit.fontawesome.com/df2086130b.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/toolbar/prism-toolbar.min.css" integrity="sha256-jsQbSO1yj62eu6dP6f2fJESRgkHNNEpxrK8NnO6/oyc=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/match-braces/prism-match-braces.min.css" integrity="sha256-ofzmpw1bhHX6o2yPsxm/qv2HF/pxkmWJhQiMnlQ+4Tw=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/themes/prism-okaidia.min.css" integrity="sha256-zzHVEO0xOoVm0I6bT9v5SgpRs1cYNyvEvHXW/1yCgqU=" crossorigin="anonymous">
 </head>
 <body>
     <section class="section">
@@ -13,8 +17,25 @@
 
             <p>Check the console for some extra output.</p>
 
-            <input type="file" id="csvFile" accept=".csv" />
-            <div id="result"></div>
+            <details class="block">
+                <summary><strong>Initialisation Options - click to expand</strong></summary>
+                <div id="options"></div>
+            </details>
+
+            <div class="file">
+                <label class="file-label" for="csvFile">
+                    <input class="file-input" id="csvFile" type="file" accept=".csv" required>
+                    <span class="file-cta">
+                    <span class="file-icon">
+                        <i class="fas fa-upload"></i>
+                    </span>
+                    <span class="file-label"> Choose a file… </span>
+                    </span>
+                </label>
+            </div>
+            <div class="block" id="controls"></div>
+            <div class="block" id="result"></div>
+            <div class="block" id="csv"></div>
         </div>
     </section>
 
@@ -28,8 +49,15 @@
                 { name: 'name', title: 'Name' },
                 { name: 'email', title: 'Email', defaultValue: 'a@b.com', validate: 'email' },
                 { name: 'maybe_missing', title: 'Maybe Missing', validate: 'boolean' }
-            ]
+            ],
+            controlsContainer: '#controls',
         };
+
+        document.getElementById('options').innerHTML = `
+            <h3>Options</h3>
+            <pre class="language-javascript"><code>const options = ${JSON.stringify(options, null, 2)};
+const mapper = new CsvMapper('#csvFile', options)</code></pre>
+        `;
 
         // Static method usage
         const csvText = `name,not_used,email,maybe_missing
@@ -47,18 +75,31 @@
         // HTML usage
         const fileInput = document.getElementById('csvFile');
         const result = document.getElementById('result');
+        const csv = document.getElementById('csv');
 
         // Create mapper with simple configuration
         const mapper = new CsvMapper(fileInput, options);
 
         // Listen for when CSV is processed
-        mapper.addEventListener('mapped', (event) => {
+        mapper.addEventListener('afterRemap', (event) => {
+            console.log('afterRemap', event.detail);
             const rows = event.detail.rows;
+            csv.innerHTML = `
+                <h3>CSV Result:</h3>
+                <pre class="language-json"><code>${event.detail.csv}</code></pre>
+            `;
             result.innerHTML = `
                 <h3>Processed ${rows.length} rows:</h3>
-                <pre>${JSON.stringify(rows, null, 2)}</pre>
+                <pre class="language-json"><code>${JSON.stringify(rows, null, 2)}</code></pre>
             `;
+            Prism.highlightAll();
         });
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/autoloader/prism-autoloader.min.js" integrity="sha256-AjM0J5XIbiB590BrznLEgZGLnOQWrt62s3BEq65Q/I0=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/toolbar/prism-toolbar.min.js" integrity="sha256-NSwb7O0HrDJcC+2SASgGuCP8+tdpIhqnzLTZkGRJRCk=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/show-language/prism-show-language.min.js" integrity="sha256-Iy5p6AvgpCeFkznsN5PvgtzOzu1zpWLGfVtPF5H9akk=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/match-braces/prism-match-braces.min.js" integrity="sha256-+5ZWEZo03rdvJF2quCewrodzNhHu9aDLctMge3kzqYU=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.30.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js" integrity="sha256-qf3MqHLzDh4qqAnc9QVmqjEWBA4CfzP1YwRFbfNfpnE=" crossorigin="anonymous"></script>
 </body>
 </html>

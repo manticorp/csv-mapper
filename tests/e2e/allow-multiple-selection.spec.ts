@@ -52,7 +52,7 @@ test.describe('CSV Mapper allowMultipleSelection tests', () => {
     });
 
     for (const field of ['product_id', 'name', 'price', 'category', 'stock']) {
-      await expect(page.locator(`#controls2 select[name="${field}"]`)).toBeVisible();
+      await expect(page.locator(`#controls2 select[name="${field}"]`)).toBeVisible({timeout: 500});
       await expect(page.locator(`#controls2 select[name="${field}"]`)).not.toHaveAttribute('multiple');
     }
   });

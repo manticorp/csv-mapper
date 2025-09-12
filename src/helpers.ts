@@ -1,3 +1,5 @@
+import { CsvMapping } from "./types";
+
 // @ts-ignore - This will be replaced by Rollup
 const NODE_ENV = process.env.NODE_ENV;
 export const IS_DEBUG = NODE_ENV === 'development';
@@ -40,3 +42,21 @@ export const isHtmlInput = (x: any): x is HTMLInputElement =>
 
 export const isPlainObject = (x: any): x is Record<string, unknown> =>
   Object.prototype.toString.call(x) === '[object Object]';
+
+
+export const invertMapping = (mapping: CsvMapping): CsvMapping => {
+  const inverted: CsvMapping = {};
+  for (let [source, targets] of Object.entries(mapping)) {
+    if (typeof targets === 'string') {
+      targets = [targets];
+    }
+    for (const target of targets) {
+      if (Array.isArray(inverted[target])) {
+        inverted[target].push(source);
+      } else {
+        inverted[target] = [source];
+      }
+    }
+  }
+  return inverted;
+};
