@@ -47,10 +47,31 @@ export declare class DefaultDataTransformer extends EventTarget implements DataT
      */
     private transformRows;
     private _guessBoolean;
+    /**
+     * Allows all numbers of the forms:
+     * 1234
+     * -1234
+     * 1e10
+     * -1E10
+     * 1.234
+     * -1.234
+     * +1234
+     * 1,234,567.89
+     * -1,234,567.89
+     * +1,234,567.89
+     * 1 234 567.89 (space separators)
+     * 1'234'567.89 (apostrophe separators)
+     * 1_234_567.89 (underscore separators)
+     * $1,234.56 (currency symbols)
+     * €1.234,56 (European decimal comma)
+     * 123% (percentages)
+     * (123.45) (accounting negative)
+     */
+    private static _transformNumber;
     private _transformBoolean;
     private _transformDate;
     private _formatDateString;
-    private transformValue;
+    private _transformValue;
     /**
      * Generate CSV output from transformed data
      * @param mappedRows Transformed data rows

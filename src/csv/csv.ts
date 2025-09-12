@@ -34,12 +34,19 @@ export class Csv implements Iterator<CsvRow> {
         return this.index < this.rows.length;
     }
 
+    row(index: number): CsvRow {
+        if (index < 0 || index >= this.rows.length) {
+            throw new Error('Row index out of range');
+        }
+        return new CsvRow(index, this.rows[index], this.headers);
+    }
+
     current(): CsvRow {
-        return new CsvRow(this.index, this.rows[this.index], this.headers);
+        return this.row(this.index);
     }
 
     nextRow(): CsvRow {
-        return new CsvRow(this.index, this.rows[this.index++], this.headers);
+        return this.row(this.index++);
     }
 
     /** Special Iterator functions */

@@ -38,6 +38,10 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
+  expect: {
+    timeout: 1000,
+  },
+
   /* Configure projects for major browsers */
   projects: [
     {
@@ -81,6 +85,6 @@ export default defineConfig({
     command: 'cd demo/server && npm start',
     url: 'http://localhost:8081',
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    timeout: 10 * 1000,
   },
 });

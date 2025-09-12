@@ -156,14 +156,16 @@ test.describe('CSV Mapper allowMultipleSelection tests', () => {
     await page.locator('#switchMode1').click();
 
     // Map both category and stock to the same CSV header
-    await page.locator('#controls1 select[name="category"]').selectOption('Category');
-    await page.locator('#controls1 select[name="stock"]').selectOption('Category');
+    await expect(page.locator('#controls1 select[name="category"]')).toHaveAttribute('multiple', {timeout: 500});
+    await page.locator('#controls1 select[name="category"]').selectOption('Category', {timeout: 500});
+    await page.locator('#controls1 select[name="stock"]').selectOption('Category', {timeout: 500});
 
     // Deselect stock
-    await page.locator('#controls1 select[name="stock"]').selectOption('');
+    await page.locator('#controls1 select[name="stock"]').selectOption('', {timeout: 500});
 
     // Category should still be mapped, stock should be deselected
-    await expect(page.locator('#controls1 select[name="category"]')).toHaveValue('Category');
-    await expect(page.locator('#controls1 select[name="stock"]')).toHaveValue('');
+    await expect(page.locator('#controls1 select[name="category"]')).toHaveAttribute('multiple', {timeout: 500});
+    await expect(page.locator('#controls1 select[name="category"]')).toHaveValue('Category', {timeout: 500});
+    await expect(page.locator('#controls1 select[name="stock"]')).toHaveValue('', {timeout: 500});
   });
 });

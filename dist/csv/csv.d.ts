@@ -17,6 +17,7 @@ export declare class Csv implements Iterator<CsvRow> {
     constructor(rows?: any[][], headers?: string[] | null | undefined);
     clone(): Csv;
     has(): boolean;
+    row(index: number): CsvRow;
     current(): CsvRow;
     nextRow(): CsvRow;
     /** Special Iterator functions */

@@ -9,7 +9,7 @@ import { ColumnSpec, ValidationError, MappedOutput, ValidationResult,  Validatio
 import Str from '../str.js';
 import { Csv } from '../csv/csv.js';
 import { DateFormatter } from './dateFormatter.js';
-import { invertMapping } from '../helpers.js';
+import { debug, invertMapping } from '../helpers.js';
 
 export interface TransformOptions {
   /** Delimiter to use for output */
@@ -146,7 +146,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
         let transformedValue = value;
         if (spec.transform) {
           try {
-            transformedValue = this.transformValue(transformedValue, spec.transform, rowIndex, header, spec);
+            transformedValue = this._transformValue(transformedValue, spec.transform, rowIndex, header, spec);
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             this._transformationError(rowIndex, header, transformedValue, msg);
@@ -204,6 +204,135 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
     return Boolean(val);
   }
 
+  /**
+   * Allows all numbers of the forms:
+   * 1234
+   * -1234
+   * 1e10
+   * -1E10
+   * 1.234
+   * -1.234
+   * +1234
+   * 1,234,567.89
+   * -1,234,567.89
+   * +1,234,567.89
+   * 1 234 567.89 (space separators)
+   * 1'234'567.89 (apostrophe separators)
+   * 1_234_567.89 (underscore separators)
+   * $1,234.56 (currency symbols)
+   * €1.234,56 (European decimal comma)
+   * 123% (percentages)
+   * (123.45) (accounting negative)
+   */
+  private static _transformNumber(value: any): string {
+    if (value === null || value === undefined || value === '') {
+      return '';
+    }
+
+    let str = String(value).trim();
+
+    if (str === '') {
+      return '';
+    }
+
+    // Handle special cases first
+    if (str === 'NaN' || str === 'Infinity' || str === '-Infinity') {
+      return str;
+    }
+
+    // Store original for fallback
+    const original = str;
+
+    // Handle accounting format (parentheses for negative)
+    let isNegative = false;
+    if (str.startsWith('(') && str.endsWith(')')) {
+      isNegative = true;
+      str = str.slice(1, -1).trim();
+    }
+
+    // Handle percentage
+    let isPercentage = false;
+    if (str.endsWith('%')) {
+      isPercentage = true;
+      str = str.slice(0, -1).trim();
+    }
+
+    // Remove currency symbols (common ones)
+    str = str.replace(/^[$€£¥₹₽¢₩₪₨₦₡₵₴₸₺₼₾₿＄￠￡￥￦]/u, '');
+
+    // Handle European decimal comma format (e.g., "1.234,56")
+    // Check if there are dots AND a comma, and comma is closer to the end
+    const dotIndex = str.lastIndexOf('.');
+    const commaIndex = str.lastIndexOf(',');
+
+    if (dotIndex !== -1 && commaIndex !== -1) {
+      if (commaIndex > dotIndex) {
+        // European format: dots are thousand separators, comma is decimal
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else {
+        // American format: commas are thousand separators, dot is decimal
+        str = str.replace(/,/g, '');
+      }
+    } else if (commaIndex !== -1 && dotIndex === -1) {
+      // Only comma present - could be decimal or thousand separator
+      // If there are exactly 3 digits after comma, treat as thousand separator
+      // Otherwise treat as decimal separator
+      const afterComma = str.substring(commaIndex + 1);
+      if (afterComma.length === 3 && /^\d+$/.test(afterComma) && commaIndex > 0) {
+        // Likely thousand separator
+        str = str.replace(',', '');
+      } else {
+        // Likely decimal separator
+        str = str.replace(',', '.');
+      }
+    } else if (dotIndex === -1 && commaIndex === -1) {
+      // No separators, remove other common thousand separators
+      str = str.replace(/[\s'_]/g, '');
+    } else {
+      // Only dot present, remove comma thousand separators
+      str = str.replace(/,/g, '');
+    }
+
+    // Remove remaining thousand separators (spaces, apostrophes, underscores)
+    // But be careful not to remove spaces in scientific notation
+    if (!str.match(/e[\s]*[+-]?\d+/i)) {
+      str = str.replace(/[\s'_]/g, '');
+    }
+
+    // Handle explicit positive sign
+    if (str.startsWith('+')) {
+      str = str.slice(1);
+    }
+
+    // Apply negative from accounting format
+    if (isNegative && !str.startsWith('-')) {
+      str = '-' + str;
+    }
+
+    // Try to parse the cleaned string
+    let parsed = parseFloat(str);
+
+    // If parsing failed, try the original value
+    if (isNaN(parsed)) {
+      parsed = parseFloat(original);
+      if (isNaN(parsed)) {
+        // Last resort: try Number constructor on original
+        parsed = Number(original);
+        if (isNaN(parsed)) {
+          return ''; // Return empty string if all parsing attempts fail
+        }
+      }
+    }
+
+    // Handle percentage conversion
+    if (isPercentage) {
+      parsed = parsed / 100;
+    }
+
+    // Return as string, preserving precision
+    return String(parsed);
+  }
+
   private _transformBoolean(value: any): string {
     if (this.options.booleanFormatter) {
       if (typeof this.options.booleanFormatter === 'function') {
@@ -237,6 +366,10 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
         value = this._formatDateString(value, formatter);
       }
     } else {
+      value = new Date(value);
+      if (isNaN(value.getTime())) {
+        return `Invalid Date`;
+      }
       value = `${new Date(value)}`;
     }
     return value;
@@ -246,16 +379,24 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
     return DateFormatter.format(value, format);
   }
 
-  private transformValue(value: any, transform: ColumnSpec['transform'], rowIndex: number, column: string|number, spec: ColumnSpec): any {
-    if (typeof transform === 'string') {
-      transform = transform.split('|').map(t => t.trim()) as TransformType[];
+  private _transformValue(value: any, transform: ColumnSpec['transform'], rowIndex: number, column: string|number, spec: ColumnSpec): any {
+    let transformType = transform;
+    if (
+      typeof transformType === 'object' &&
+      !Array.isArray(transformType) &&
+      typeof transformType.type !== 'undefined'
+    ) {
+      transformType = transformType.type;
     }
-    if (Array.isArray(transform)) {
-      for (const t of transform) {
+    if (typeof transformType === 'string') {
+      transformType = transformType.split('|').map(t => t.trim()) as TransformType[];
+    }
+    if (Array.isArray(transformType)) {
+      for (const t of transformType) {
         if (typeof t === 'string') {
           switch (t) {
             case 'number':
-              value = String(Number(value));
+              value = DefaultDataTransformer._transformNumber(value);
               break;
             case 'boolean':
               value = this._transformBoolean(value);
@@ -301,8 +442,8 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
           value = t(value, rowIndex, column, spec);
         }
       }
-    } else if (typeof transform === 'function') {
-      value = transform(value, rowIndex, column, spec);
+    } else if (typeof transformType === 'function') {
+      value = transformType(value, rowIndex, column, spec);
     }
     return value;
   }
@@ -425,7 +566,9 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
         case 'email':
           return DefaultDataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
         case 'number':
-          const num = Number(fieldValue);
+          const transformed = DefaultDataTransformer._transformNumber(String(fieldValue));
+          if (transformed === '' && fieldValue !== '') return false;
+          const num = Number(transformed);
           if (isNaN(num) || !isFinite(num)) return false;
           if (rule.min !== undefined && num < rule.min) return false;
           if (rule.max !== undefined && num > rule.max) return false;
@@ -433,6 +576,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
         case 'boolean':
           return ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(String(fieldValue).toLowerCase());
         case 'date':
+        case 'datetime':
           if (rule.format) {
             return DateFormatter.validateFormat(String(fieldValue), rule.format);
           }
@@ -442,9 +586,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
         case 'telephone':
           return DefaultDataTransformer._validateRegex(fieldValue, /^[\+]?[\d\s\-\(\)\.]{7,15}$/);
         case 'time':
-          return DefaultDataTransformer._validateRegex(fieldValue, /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/);
-        case 'datetime':
-          return !isNaN(Date.parse(fieldValue));
+          return DefaultDataTransformer._validateRegex(fieldValue, /^((([0-9]|1[0-2])(AM|PM))|(([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?( ?(AM|PM))?))$/);
         default:
           return true;
       }

@@ -23,7 +23,6 @@ export declare class DateFormatter {
         allowUppercaseMD?: boolean | undefined;
     }): RegExp;
     static format(value: any, format: string): string;
-    static parseFlexibleDate(dateStr: string): Date;
     static formatWithPhpStyle(date: Date, format: string): string;
 }
 //# sourceMappingURL=dateFormatter.d.ts.map

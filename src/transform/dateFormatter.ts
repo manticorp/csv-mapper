@@ -113,6 +113,7 @@ export class DateFormatter {
 
         return new RegExp((anchors ? '^' : '') + out + (anchors ? '$' : ''));
     }
+
     static format(value: any, format: string): string {
         if (!value) return '';
 
@@ -122,18 +123,12 @@ export class DateFormatter {
         } else {
             date = new Date(value);
             if (isNaN(date.getTime())) {
-            // Try parsing common formats if default parsing fails
-            date = DateFormatter.parseFlexibleDate(String(value));
-            if (isNaN(date.getTime())) {
-                return String(value); // Return original if unparseable
-            }
+                return `Invalid Date`;
             }
         }
 
         // Handle predefined format shortcuts
         switch (format.toLowerCase()) {
-            case DatePreset.ISO8601:
-                return date.toISOString();
             case DatePreset.RFC822:
                 return date.toUTCString().replace('GMT', '+0000');
             case DatePreset.RFC850:
@@ -150,54 +145,15 @@ export class DateFormatter {
             case DatePreset.RFC1036:
             case DatePreset.RFC1123:
             case DatePreset.RFC2822:
-                return date.toUTCString();
             case DatePreset.RFC7231:
                 return date.toUTCString();
+            case DatePreset.ISO8601:
             case DatePreset.W3C:
                 return date.toISOString();
         }
 
         // Handle PHP-style format strings
         return DateFormatter.formatWithPhpStyle(date, format);
-    }
-
-    static parseFlexibleDate(dateStr: string): Date {
-        // Common date formats to try
-        const formats = [
-            // MM/DD/YYYY or DD/MM/YYYY
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/,
-            // YYYY/MM/DD or YYYY-MM-DD
-            /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,
-            // DD.MM.YYYY
-            /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/,
-            // YYYY.MM.DD
-            /^(\d{4})\.(\d{1,2})\.(\d{1,2})$/
-        ];
-
-        for (const regex of formats) {
-            const match = dateStr.match(regex);
-            if (match) {
-            const [, part1, part2, part3] = match;
-
-            // Try different interpretations
-            const attempts = [
-                // YYYY-MM-DD or YYYY/MM/DD
-                new Date(parseInt(part1), parseInt(part2) - 1, parseInt(part3)),
-                // MM/DD/YYYY (US format)
-                new Date(parseInt(part3), parseInt(part1) - 1, parseInt(part2)),
-                // DD/MM/YYYY (European format)
-                new Date(parseInt(part3), parseInt(part2) - 1, parseInt(part1))
-            ];
-
-            for (const attempt of attempts) {
-                if (!isNaN(attempt.getTime())) {
-                return attempt;
-                }
-            }
-            }
-        }
-
-        return new Date(NaN);
     }
 
     static formatWithPhpStyle(date: Date, format: string): string {
