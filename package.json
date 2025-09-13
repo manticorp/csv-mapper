@@ -1,6 +1,6 @@
 {
   "name": "@manticorp/csv-mapper",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CSV column mapper for the browser with optional UI, auto-mapping, transforms, validation, and robust parsing via PapaParse.",
   "keywords": [
     "csv",
