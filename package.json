@@ -1,6 +1,6 @@
 {
   "name": "@manticorp/csv-mapper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CSV column mapper for the browser with optional UI, auto-mapping, transforms, validation, and robust parsing via PapaParse.",
   "keywords": [
     "csv",
@@ -51,8 +51,10 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:all": "npm run test && npm run test:e2e",
-    "prepublish": "npm run type-check && npm run build && npm run test:all && npx typedoc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run type-check && npm run build && npm run test:all && npx typedoc",
+    "release": "node scripts/release.js",
+    "release:ps": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "release:dry": "npm run build && npm pack --dry-run"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
@@ -64,6 +66,7 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.3.1",
     "@types/papaparse": "^5.3.16",
+    "archiver": "^7.0.1",
     "cross-env": "^10.0.0",
     "jest": "^30.1.3",
     "jest-environment-jsdom": "^30.1.2",

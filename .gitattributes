@@ -1,0 +1,14 @@
+# Ensure consistent line endings
+* text=auto eol=lf
+
+# Mark generated files
+dist/* linguist-generated=true
+docs/* linguist-generated=true
+coverage/* linguist-generated=true
+
+# GitHub release files
+*.zip binary
+*.tar.gz binary
+
+# Ensure shell scripts have proper line endings
+*.sh text eol=lf
