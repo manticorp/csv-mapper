@@ -23,6 +23,7 @@ export interface ValidationRule {
     max?: number;
     format?: string;
 }
+export type ValidationFunction = (value: any, row: number, column: string | number, spec: ColumnSpec) => boolean | string;
 export interface ColumnSpec {
     /** The name of the column. Is the default value for the UI title and output header */
     name: string;
@@ -39,7 +40,7 @@ export interface ColumnSpec {
     allowDuplicates?: boolean;
     match?: RegExp | ((header: string) => boolean);
     transform?: TransformRule | TransformType | (TransformType | TransformFunction)[] | TransformFunction;
-    validate?: ValidationType | RegExp | ((value: any) => boolean) | ValidationRule;
+    validate?: ValidationType | RegExp | ValidationFunction | ValidationRule;
     validationMessage?: string;
 }
 /**

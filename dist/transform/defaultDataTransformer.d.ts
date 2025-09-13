@@ -1,4 +1,4 @@
-import { ColumnSpec, MappedOutput, ValidationRule, CsvMapping, DataTransformer } from '../types.js';
+import { ColumnSpec, MappedOutput, ValidationRule, CsvMapping, DataTransformer, ValidationFunction } from '../types.js';
 import { Csv } from '../csv/csv.js';
 export interface TransformOptions {
     /** Delimiter to use for output */
@@ -100,7 +100,7 @@ export declare class DefaultDataTransformer extends EventTarget implements DataT
      * @param validator Validation rule
      * @returns True if valid, false otherwise
      */
-    static validateValue(fieldValue: any, validator: RegExp | ((value: any) => boolean) | ValidationRule): boolean;
+    static validateValue(fieldValue: any, validator: RegExp | ValidationFunction | ValidationRule, row: number, header: string | number, spec: ColumnSpec): boolean | string;
     /**
      * Validate value against regex pattern
      * @param value Value to validate

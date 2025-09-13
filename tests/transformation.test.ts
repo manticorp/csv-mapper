@@ -2,9 +2,9 @@
  * Core CsvMapper functionality tests
  */
 
-import CsvMapper, { TransformRule } from '../src/csvMapper';
+import CsvMapper from '../src/csvMapper';
 
-describe('CsvMapper Validation', () => {
+describe('CsvMapper Transformation', () => {
   let mapper: CsvMapper;
 
   beforeEach(() => {
@@ -301,7 +301,6 @@ Sep 12 2025
 2025-32-12`);
     expect(result).not.toBeFalsy();
     if (result) {
-      console.log(result.data);
       const expectations = [
         '2023-01-01',
         '2023-01-01',
@@ -368,7 +367,6 @@ Sep 12 2025
       mapper.columns[0].transform.format = informat;
       const result = mapper.getMappedResult();
       expect(result).not.toBeFalsy();
-      console.log(result);
       if (result) {
         expect(result.data.row(0).get('when')).toBe(outformat);
       }

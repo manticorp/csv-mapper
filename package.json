@@ -51,6 +51,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:all": "npm run test && npm run test:e2e",
+    "prepublish": "npm run type-check && npm run build && npm run test:all && npx typedoc",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

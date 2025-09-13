@@ -27,6 +27,22 @@ export * from './types.js';
 
 export interface CsvMapperOpts extends Omit<CsvMapperOptions, 'columns'> {}
 
+/**
+ * @emits beforeParseCsv - before parsing CSV text
+ * @emits afterParseCsv - after parsing CSV text
+ * @emits afterRead - after reading file text (before parsing)
+ * @emits mappingChange - when the mapping changes (user or programmatically)
+ * @emits mappingFailed - when mapping is invalid (e.g. required columns missing)
+ * @emits mappingSuccess - when mapping is valid
+ * @emits beforeMap - before validating the mapping
+ * @emits afterMap - after validating the mapping
+ * @emits beforeRemap - before remapping data
+ * @emits afterRemap - after remapping data
+ * @emits validationFailed - after remapping, if there were validation errors
+ * @emits validationSuccess - after remapping, if there were no validation errors
+ * @emits transformationFail - when a transformation error occurs during data transformation
+ * @emits validationFail - when a validation error occurs during data transformation
+ */
 export default class CsvMapper extends EventTarget {
   /** The HTML input being used/monitored (if set) */
   public input: HTMLInputElement | null = null;
@@ -267,14 +283,16 @@ export default class CsvMapper extends EventTarget {
   setTransformer(dataTransformer: DataTransformer) {
     this.transformer = dataTransformer;
 
-    this.transformer.addEventListener('transformationFail', (evt) => {
-      const transformationFailEvent = new CustomEvent('transformationFail', evt);
-      return this.dispatchEvent(transformationFailEvent);
+    this.transformer.addEventListener('transformationError', (evt) => {
+      const transformationFailEvent = new CustomEvent('transformationFail', {detail: (evt as CustomEvent).detail, cancelable: true});
+      if (!this.dispatchEvent(transformationFailEvent)) {
+        evt.preventDefault();
+      }
     });
 
-    this.transformer.addEventListener('validationFail', (evt) => {
+    this.transformer.addEventListener('valueValidationError', (evt) => {
       const validationFailEvent = new CustomEvent('validationFail', evt);
-      return this.dispatchEvent(validationFailEvent);
+      this.dispatchEvent(validationFailEvent);
     });
   }
 
@@ -286,12 +304,14 @@ export default class CsvMapper extends EventTarget {
     this.csv = null;
     this.uiRenderer.reset();
 
-    const afterReadEventOb = { detail: { text: await file.text() } };
-    const bpEvent = new CustomEvent('afterRead', afterReadEventOb);
-    this.dispatchEvent(bpEvent);
+    const detail = { text: await file.text() };
+    const afterReadEvent = new CustomEvent('afterRead', { cancelable: true, detail });
+    const shouldContinue = this.dispatchEvent(afterReadEvent);
 
-    this.mapping = {};
-    this.mapCsv(afterReadEventOb.detail.text);
+    if (shouldContinue) {
+      this.mapping = {};
+      this.mapCsv(detail.text); // Use the potentially modified text from detail
+    }
   }
 
   /**
@@ -302,14 +322,19 @@ export default class CsvMapper extends EventTarget {
    * @group Main Methods
    */
   setCsv(csvText: string) {
-    this._beforeParseCsv(csvText);
-    const parsed = this.parser.parseCSV(csvText, {
+    const beforeParseCsvDetail = { csv: csvText };
+    const shouldParse = this.dispatchEvent(new CustomEvent('beforeParseCsv', { cancelable: true, detail: beforeParseCsvDetail }));
+    if (!shouldParse) return this;
+
+    const parsed = this.parser.parseCSV(beforeParseCsvDetail.csv, {
       headers: this.opts.headers,
       delimiter: this.opts.delimiter,
       quoteChar: this.opts.quoteChar,
       escapeChar: this.opts.escapeChar,
     });
-    this._afterParseCsv(parsed);
+
+    const stopFurther = this.dispatchEvent(new CustomEvent('afterParseCsv', { cancelable: true, detail: { csv: parsed } }));
+    if (!stopFurther) return this;
 
     this.csv = new Csv(parsed.rawRows, parsed.headers);
     this.dialect = parsed.dialect;
@@ -367,23 +392,29 @@ export default class CsvMapper extends EventTarget {
     this.isValid = true;
     this._renderControls();
 
-    const beforeMapEvent = new CustomEvent('beforeMap', {detail: {csv: this.csv}});
-    this.dispatchEvent(beforeMapEvent);
+    const beforeMapEvent = new CustomEvent('beforeMap', { cancelable: true, detail: { csv: this.csv } });
+    const continueMapping = this.dispatchEvent(beforeMapEvent);
+
+    if (!continueMapping) {
+      return false;
+    }
 
     const result = this._validateMapping();
 
-    const amEvent = new CustomEvent('afterMap', { detail: { csv: this.csv, isValid: result.isValid } });
-    this.dispatchEvent(amEvent);
+    const amEvent = new CustomEvent('afterMap', { cancelable: true, detail: { csv: this.csv, isValid: result.isValid } });
+    const isValid = result.isValid && this.dispatchEvent(amEvent);
 
-    return result.isValid;
+    return isValid;
   }
 
   getMappedResult() : MappedOutput|void  {
     const result = this.remap();
     if (result) {
       // Trigger afterRemap event when mapping changes
-      const brmEvent = new CustomEvent('beforeRemap', { detail: { csv: this.csv } });
-      this.dispatchEvent(brmEvent);
+      const brmEvent = new CustomEvent('beforeRemap', { cancelable: true, detail: { csv: this.csv } });
+      const shouldRemap = this.dispatchEvent(brmEvent);
+      if (!shouldRemap) return;
+
       const { data, csv, validation } = this._produceOutput();
       const armEvent = new CustomEvent('afterRemap', { detail: { rows: data.rows, csv } });
       this.dispatchEvent(armEvent);
@@ -475,14 +506,6 @@ export default class CsvMapper extends EventTarget {
       if (!file) return;
       this.setFile(file);
     }
-  }
-
-  private _beforeParseCsv(csv: string) {
-    this.dispatchEvent(new CustomEvent('beforeParseCsv', { detail: { csv } }));
-  }
-
-  private _afterParseCsv(csv: ParseResult) {
-    this.dispatchEvent(new CustomEvent('afterParseCsv', { detail: { csv } }));
   }
 
   private _autoMap(){

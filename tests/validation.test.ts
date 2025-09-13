@@ -88,7 +88,6 @@ invalid-qty
 "1,2345678901"
 "1,23456,78901"
 `);
-    console.log(result);
     expect(result).not.toBeFalsy();
     if (result) {
       expect(result.validation.totalRows).toBe(25);

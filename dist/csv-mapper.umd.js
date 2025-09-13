@@ -953,17 +953,22 @@
                         }
                         catch (error) {
                             const msg = error instanceof Error ? error.message : String(error);
-                            this._transformationError(rowIndex, header, transformedValue, msg);
-                            continue;
+                            const tResult = this._transformationError(rowIndex, header, transformedValue, msg);
+                            if (!tResult) {
+                                throw error;
+                            }
                         }
                     }
                     // Validate the transformed value
                     if (spec.validate !== undefined) {
                         const validate = typeof spec.validate === 'string' ? { type: spec.validate } : spec.validate;
-                        const isValid = DefaultDataTransformer.validateValue(transformedValue, validate);
-                        if (!isValid) {
+                        const isValid = DefaultDataTransformer.validateValue(transformedValue, validate, rowIndex, header, spec);
+                        if (isValid !== true) {
                             let message;
-                            if (typeof validate === 'object' && validate !== null && 'type' in validate) {
+                            if (typeof isValid === 'string') {
+                                message = isValid;
+                            }
+                            else if (typeof validate === 'object' && validate !== null && 'type' in validate && validate.type) {
                                 message = `Value "${transformedValue}" is not a valid ${validate.type}`;
                             }
                             else if (validate instanceof RegExp) {
@@ -1314,7 +1319,7 @@
          * @param validator Validation rule
          * @returns True if valid, false otherwise
          */
-        static validateValue(fieldValue, validator) {
+        static validateValue(fieldValue, validator, row, header, spec) {
             if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
                 return true; // Empty values are considered valid unless required
             }
@@ -1323,7 +1328,7 @@
             }
             if (typeof validator === 'function') {
                 try {
-                    return validator(fieldValue);
+                    return validator(fieldValue, row, header, spec);
                 }
                 catch (error) {
                     return false;
@@ -1338,14 +1343,14 @@
                     case 'number':
                         const transformed = DefaultDataTransformer._transformNumber(String(fieldValue));
                         if (transformed === '' && fieldValue !== '')
-                            return false;
+                            return `"${header}" was empty, not a number in row ${row}.`;
                         const num = Number(transformed);
                         if (isNaN(num) || !isFinite(num))
-                            return false;
+                            return `"${header}" was not a valid number in row ${row}.`;
                         if (rule.min !== undefined && num < rule.min)
-                            return false;
+                            return `"${header}" was less than the minimum of ${rule.min} in row ${row}.`;
                         if (rule.max !== undefined && num > rule.max)
-                            return false;
+                            return `"${header}" was greater than the maximum of ${rule.max} in row ${row}.`;
                         return true;
                     case 'boolean':
                         return ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(String(fieldValue).toLowerCase());
@@ -1418,6 +1423,7 @@
          */
         _transformationError(rowIndex, columnName, value, message) {
             return this.dispatchEvent(new CustomEvent('transformationError', {
+                cancelable: true,
                 detail: { rowIndex, columnName, value, message }
             }));
         }
@@ -2205,6 +2211,22 @@
         }
     }
 
+    /**
+     * @emits beforeParseCsv - before parsing CSV text
+     * @emits afterParseCsv - after parsing CSV text
+     * @emits afterRead - after reading file text (before parsing)
+     * @emits mappingChange - when the mapping changes (user or programmatically)
+     * @emits mappingFailed - when mapping is invalid (e.g. required columns missing)
+     * @emits mappingSuccess - when mapping is valid
+     * @emits beforeMap - before validating the mapping
+     * @emits afterMap - after validating the mapping
+     * @emits beforeRemap - before remapping data
+     * @emits afterRemap - after remapping data
+     * @emits validationFailed - after remapping, if there were validation errors
+     * @emits validationSuccess - after remapping, if there were no validation errors
+     * @emits transformationFail - when a transformation error occurs during data transformation
+     * @emits validationFail - when a validation error occurs during data transformation
+     */
     class CsvMapper extends EventTarget {
         /**
          * The parsed CSV headers.
@@ -2401,13 +2423,15 @@
         }
         setTransformer(dataTransformer) {
             this.transformer = dataTransformer;
-            this.transformer.addEventListener('transformationFail', (evt) => {
-                const transformationFailEvent = new CustomEvent('transformationFail', evt);
-                return this.dispatchEvent(transformationFailEvent);
+            this.transformer.addEventListener('transformationError', (evt) => {
+                const transformationFailEvent = new CustomEvent('transformationFail', { detail: evt.detail, cancelable: true });
+                if (!this.dispatchEvent(transformationFailEvent)) {
+                    evt.preventDefault();
+                }
             });
-            this.transformer.addEventListener('validationFail', (evt) => {
+            this.transformer.addEventListener('valueValidationError', (evt) => {
                 const validationFailEvent = new CustomEvent('validationFail', evt);
-                return this.dispatchEvent(validationFailEvent);
+                this.dispatchEvent(validationFailEvent);
             });
         }
         /**
@@ -2417,11 +2441,13 @@
             this.isValid = true;
             this.csv = null;
             this.uiRenderer.reset();
-            const afterReadEventOb = { detail: { text: await file.text() } };
-            const bpEvent = new CustomEvent('afterRead', afterReadEventOb);
-            this.dispatchEvent(bpEvent);
-            this.mapping = {};
-            this.mapCsv(afterReadEventOb.detail.text);
+            const detail = { text: await file.text() };
+            const afterReadEvent = new CustomEvent('afterRead', { cancelable: true, detail });
+            const shouldContinue = this.dispatchEvent(afterReadEvent);
+            if (shouldContinue) {
+                this.mapping = {};
+                this.mapCsv(detail.text); // Use the potentially modified text from detail
+            }
         }
         /**
          * Sets the CSV text to be used.
@@ -2431,14 +2457,19 @@
          * @group Main Methods
          */
         setCsv(csvText) {
-            this._beforeParseCsv(csvText);
-            const parsed = this.parser.parseCSV(csvText, {
+            const beforeParseCsvDetail = { csv: csvText };
+            const shouldParse = this.dispatchEvent(new CustomEvent('beforeParseCsv', { cancelable: true, detail: beforeParseCsvDetail }));
+            if (!shouldParse)
+                return this;
+            const parsed = this.parser.parseCSV(beforeParseCsvDetail.csv, {
                 headers: this.opts.headers,
                 delimiter: this.opts.delimiter,
                 quoteChar: this.opts.quoteChar,
                 escapeChar: this.opts.escapeChar,
             });
-            this._afterParseCsv(parsed);
+            const stopFurther = this.dispatchEvent(new CustomEvent('afterParseCsv', { cancelable: true, detail: { csv: parsed } }));
+            if (!stopFurther)
+                return this;
             this.csv = new Csv(parsed.rawRows, parsed.headers);
             this.dialect = parsed.dialect;
             return this;
@@ -2483,19 +2514,24 @@
         remap() {
             this.isValid = true;
             this._renderControls();
-            const beforeMapEvent = new CustomEvent('beforeMap', { detail: { csv: this.csv } });
-            this.dispatchEvent(beforeMapEvent);
+            const beforeMapEvent = new CustomEvent('beforeMap', { cancelable: true, detail: { csv: this.csv } });
+            const continueMapping = this.dispatchEvent(beforeMapEvent);
+            if (!continueMapping) {
+                return false;
+            }
             const result = this._validateMapping();
-            const amEvent = new CustomEvent('afterMap', { detail: { csv: this.csv, isValid: result.isValid } });
-            this.dispatchEvent(amEvent);
-            return result.isValid;
+            const amEvent = new CustomEvent('afterMap', { cancelable: true, detail: { csv: this.csv, isValid: result.isValid } });
+            const isValid = result.isValid && this.dispatchEvent(amEvent);
+            return isValid;
         }
         getMappedResult() {
             const result = this.remap();
             if (result) {
                 // Trigger afterRemap event when mapping changes
-                const brmEvent = new CustomEvent('beforeRemap', { detail: { csv: this.csv } });
-                this.dispatchEvent(brmEvent);
+                const brmEvent = new CustomEvent('beforeRemap', { cancelable: true, detail: { csv: this.csv } });
+                const shouldRemap = this.dispatchEvent(brmEvent);
+                if (!shouldRemap)
+                    return;
                 const { data, csv, validation } = this._produceOutput();
                 const armEvent = new CustomEvent('afterRemap', { detail: { rows: data.rows, csv } });
                 this.dispatchEvent(armEvent);
@@ -2585,12 +2621,6 @@
                     return;
                 this.setFile(file);
             }
-        }
-        _beforeParseCsv(csv) {
-            this.dispatchEvent(new CustomEvent('beforeParseCsv', { detail: { csv } }));
-        }
-        _afterParseCsv(csv) {
-            this.dispatchEvent(new CustomEvent('afterParseCsv', { detail: { csv } }));
         }
         _autoMap() {
             this.autoMap();

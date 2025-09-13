@@ -4,6 +4,22 @@ import { Csv } from './csv/csv.js';
 export * from './types.js';
 export interface CsvMapperOpts extends Omit<CsvMapperOptions, 'columns'> {
 }
+/**
+ * @emits beforeParseCsv - before parsing CSV text
+ * @emits afterParseCsv - after parsing CSV text
+ * @emits afterRead - after reading file text (before parsing)
+ * @emits mappingChange - when the mapping changes (user or programmatically)
+ * @emits mappingFailed - when mapping is invalid (e.g. required columns missing)
+ * @emits mappingSuccess - when mapping is valid
+ * @emits beforeMap - before validating the mapping
+ * @emits afterMap - after validating the mapping
+ * @emits beforeRemap - before remapping data
+ * @emits afterRemap - after remapping data
+ * @emits validationFailed - after remapping, if there were validation errors
+ * @emits validationSuccess - after remapping, if there were no validation errors
+ * @emits transformationFail - when a transformation error occurs during data transformation
+ * @emits validationFail - when a validation error occurs during data transformation
+ */
 export default class CsvMapper extends EventTarget {
     /** The HTML input being used/monitored (if set) */
     input: HTMLInputElement | null;
@@ -129,8 +145,6 @@ export default class CsvMapper extends EventTarget {
     private _tryReplaceFileList;
     private _resolveUiRenderer;
     private _onFileChange;
-    private _beforeParseCsv;
-    private _afterParseCsv;
     private _autoMap;
     private _validateMapping;
     private _onMappingChange;

@@ -5,7 +5,7 @@
  * including validation, custom transforms, and output generation in various formats.
  */
 
-import { ColumnSpec, ValidationError, MappedOutput, ValidationResult,  ValidationRule, CsvMapping, TransformType, DataTransformer, TransformFunction } from '../types.js';
+import { ColumnSpec, ValidationError, MappedOutput, ValidationResult,  ValidationRule, CsvMapping, TransformType, DataTransformer, TransformFunction, ValidationFunction } from '../types.js';
 import Str from '../str.js';
 import { Csv } from '../csv/csv.js';
 import { DateFormatter } from './dateFormatter.js';
@@ -149,19 +149,23 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
             transformedValue = this._transformValue(transformedValue, spec.transform, rowIndex, header, spec);
           } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
-            this._transformationError(rowIndex, header, transformedValue, msg);
-            continue;
+            const tResult = this._transformationError(rowIndex, header, transformedValue, msg);
+            if (!tResult) {
+              throw error;
+            }
           }
         }
 
         // Validate the transformed value
         if (spec.validate !== undefined) {
           const validate = typeof spec.validate === 'string' ? {type: spec.validate} : spec.validate;
-          const isValid = DefaultDataTransformer.validateValue(transformedValue, validate);
+          const isValid = DefaultDataTransformer.validateValue(transformedValue, validate, rowIndex, header, spec);
 
-          if (!isValid) {
+          if (isValid !== true) {
             let message: string;
-            if (typeof validate === 'object' && validate !== null && 'type' in validate) {
+            if (typeof isValid === 'string') {
+              message = isValid;
+            } else if (typeof validate === 'object' && validate !== null && 'type' in validate && validate.type) {
               message = `Value "${transformedValue}" is not a valid ${validate.type}`;
             } else if (validate instanceof RegExp) {
               message = `Value "${transformedValue}" does not match pattern ${validate}`;
@@ -542,7 +546,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
    * @param validator Validation rule
    * @returns True if valid, false otherwise
    */
-  static validateValue(fieldValue: any, validator: RegExp | ((value: any) => boolean) | ValidationRule): boolean {
+  static validateValue(fieldValue: any, validator: RegExp | ValidationFunction | ValidationRule, row: number, header: string|number, spec: ColumnSpec): boolean|string {
     if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
       return true; // Empty values are considered valid unless required
     }
@@ -553,7 +557,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
 
     if (typeof validator === 'function') {
       try {
-        return validator(fieldValue);
+        return validator(fieldValue, row, header, spec)
       } catch (error) {
         return false;
       }
@@ -567,11 +571,11 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
           return DefaultDataTransformer._validateRegex(fieldValue, /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/);
         case 'number':
           const transformed = DefaultDataTransformer._transformNumber(String(fieldValue));
-          if (transformed === '' && fieldValue !== '') return false;
+          if (transformed === '' && fieldValue !== '') return `"${header}" was empty, not a number in row ${row}.`;
           const num = Number(transformed);
-          if (isNaN(num) || !isFinite(num)) return false;
-          if (rule.min !== undefined && num < rule.min) return false;
-          if (rule.max !== undefined && num > rule.max) return false;
+          if (isNaN(num) || !isFinite(num)) return `"${header}" was not a valid number in row ${row}.`;
+          if (rule.min !== undefined && num < rule.min) return `"${header}" was less than the minimum of ${rule.min} in row ${row}.`;
+          if (rule.max !== undefined && num > rule.max) return `"${header}" was greater than the maximum of ${rule.max} in row ${row}.`;
           return true;
         case 'boolean':
           return ['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(String(fieldValue).toLowerCase());
@@ -650,6 +654,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
    */
   private _transformationError(rowIndex: number, columnName: string, value: any, message: string): boolean {
     return this.dispatchEvent(new CustomEvent('transformationError', {
+      cancelable: true,
       detail: { rowIndex, columnName, value, message }
     }));
   }
