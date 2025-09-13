@@ -834,6 +834,14 @@ npm run test:watch       # Run tests in watch mode
 npm run test:coverage    # Run tests with coverage report
 ```
 
+### Pushing Changes
+
+Please run the following before making pull requests:
+
+```bash
+npm run prepublish
+```
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
