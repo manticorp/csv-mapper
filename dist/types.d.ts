@@ -223,5 +223,11 @@ export interface CsvMapperOptions {
     uiRenderer?: UIRenderer | UIRendererOption | null;
     /** Data transformer and validator */
     transformer?: DataTransformer;
+    /**
+     * Whether to inject the default CSS styles into the document head.
+     * Set to `false` to provide your own CSS for `.csvm-*` classes.
+     * Defaults to `true`.
+     */
+    injectStyles?: boolean;
 }
 //# sourceMappingURL=types.d.ts.map

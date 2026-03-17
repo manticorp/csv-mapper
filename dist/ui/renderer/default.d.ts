@@ -12,7 +12,7 @@ export declare class DefaultUIRenderer implements UIRenderer {
     private hasInitialRender;
     private lastDrawnMap;
     private redrawHash;
-    constructor();
+    constructor(injectStyles?: boolean);
     reset(): this;
     protected conditionallySetContents(container: HTMLElement | null, content: string): void;
     protected hashesAreEquivalent(a: Record<string, any>, b: Record<string, any>): boolean;

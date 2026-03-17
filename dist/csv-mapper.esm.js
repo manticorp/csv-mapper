@@ -1561,15 +1561,16 @@ class AutoMapper {
  * Provides the classic dropdown-based mapping interface
  */
 class DefaultUIRenderer {
-    constructor() {
+    constructor(injectStyles = true) {
         this.container = null;
         this.mappingChangeCallback = null;
         this.currentOptions = null;
         this.hasInitialRender = false;
         this.lastDrawnMap = {};
         this.redrawHash = {};
-        // Ensure CSS is loaded
-        DefaultUIRenderer._ensureStyles();
+        if (injectStyles) {
+            DefaultUIRenderer._ensureStyles();
+        }
         this.uniqid = Math.random().toString(36).substring(2, 10);
     }
     reset() {
@@ -2299,6 +2300,7 @@ class CsvMapper extends EventTarget {
             uiRenderer: null,
             mappingMode: 'configToCsv',
             allowMultipleSelection: false,
+            injectStyles: true,
         }, options || {});
         this.setColumns(options.columns);
         this.parser = this.opts.parser || new PapaParser();
@@ -2567,11 +2569,11 @@ class CsvMapper extends EventTarget {
         if (typeof uiRenderer === 'string') {
             switch (uiRenderer) {
                 default:
-                    uiRenderer = new DefaultUIRenderer();
+                    uiRenderer = new DefaultUIRenderer(this.opts.injectStyles);
             }
         }
         else {
-            uiRenderer = uiRenderer || new DefaultUIRenderer();
+            uiRenderer = uiRenderer || new DefaultUIRenderer(this.opts.injectStyles);
         }
         uiRenderer.onMappingChange((sourceHeader, targetColumns) => {
             if (this.opts.mappingMode === 'configToCsv') {
