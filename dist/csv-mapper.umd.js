@@ -1615,11 +1615,13 @@
                 headers: options.headers.slice()
             };
             logger.debug(redrawHash, this.redrawHash, this.hashesAreEquivalent(this.redrawHash, redrawHash));
+            const mappingDisplay = this._renderRequiredMappingStatus(options.mappingResult);
             const validationDisplay = this._renderValidationMessages(options.validation);
             const mappingModeText = this.mappingModeText(options.mappingMode);
             const [leftHeader, rightHeader] = this.mappingModeHeaders(options.mappingMode);
             const tagText = this.tagText(options);
             if (container) {
+                this.conditionallySetContents(container.querySelector(`[id="${this.uniqid}-mapping-display"]`), mappingDisplay);
                 this.conditionallySetContents(container.querySelector(`[id="${this.uniqid}-validation-display"]`), validationDisplay);
                 this.conditionallySetContents(container.querySelector(`[id="${this.uniqid}-mode"]`), mappingModeText);
                 this.conditionallySetContents(container.querySelector(`[id="${this.uniqid}-tag"]`), tagText);
