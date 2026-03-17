@@ -16,9 +16,10 @@ export class DefaultUIRenderer implements UIRenderer {
   private lastDrawnMap : Record<string, string[]|string> = {};
   private redrawHash: Record<string,any> = {};
 
-  constructor() {
-    // Ensure CSS is loaded
-    DefaultUIRenderer._ensureStyles();
+  constructor(injectStyles: boolean = true) {
+    if (injectStyles) {
+      DefaultUIRenderer._ensureStyles();
+    }
     this.uniqid = Math.random().toString(36).substring(2, 10);
   }
 

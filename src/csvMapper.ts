@@ -143,6 +143,7 @@ export default class CsvMapper extends EventTarget {
       uiRenderer: null,
       mappingMode: 'configToCsv',
       allowMultipleSelection: false,
+      injectStyles: true,
     }, options || {});
 
     this.setColumns(options.columns);
@@ -461,10 +462,10 @@ export default class CsvMapper extends EventTarget {
     if (typeof uiRenderer === 'string') {
       switch (uiRenderer) {
         default:
-          uiRenderer = new DefaultUIRenderer();
+          uiRenderer = new DefaultUIRenderer(this.opts.injectStyles);
       }
     } else {
-      uiRenderer = uiRenderer || new DefaultUIRenderer();
+      uiRenderer = uiRenderer || new DefaultUIRenderer(this.opts.injectStyles);
     }
     uiRenderer.onMappingChange((sourceHeader, targetColumns) : CsvMapping => {
       if (this.opts.mappingMode === 'configToCsv') {

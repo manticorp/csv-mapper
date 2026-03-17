@@ -85,6 +85,18 @@ describe('CsvMapper Core', () => {
       mapper = new CsvMapper('#test-input');
       expect(mapper.input).toBe(mockInput);
     });
+
+    test('should inject styles by default', () => {
+      document.head.innerHTML = '';
+      mapper = new CsvMapper(fileInput, { showUserControls: false });
+      expect(document.getElementById('csv-mapper-styles')).not.toBeNull();
+    });
+
+    test('should not inject styles when injectStyles is false', () => {
+      document.head.innerHTML = '';
+      mapper = new CsvMapper(fileInput, { showUserControls: false, injectStyles: false });
+      expect(document.getElementById('csv-mapper-styles')).toBeNull();
+    });
   });
 
   describe('Column Management', () => {
