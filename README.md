@@ -360,6 +360,7 @@ const mapper = new CsvMapper('#csv', {
     uiRenderer: null,              // UI renderer - accepts string ("default") or a renderer object
     transformer: null,             // Data transformer/validator
     parser: null,                  // CSV parser
+    injectStyles: true,            // Whether to inject default CSS into document head
 });
 </script>
 ```
