@@ -956,7 +956,7 @@ class DefaultDataTransformer extends EventTarget {
             const column = columnSpecs.find(spec => (spec.outputHeader ?? spec.name ?? spec.title) === colName);
             data.addColumn(colName, null, column?.defaultValue ?? null);
         });
-        data.reorderColumns(headers);
+        data.reorderColumns(headers.filter(h => !ignoredSources.includes(h)));
         const colCache = new Map();
         for (const sourceRow of data) {
             for (const [colIndex, value, header] of sourceRow.entries()) {

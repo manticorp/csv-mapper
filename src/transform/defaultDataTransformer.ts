@@ -156,7 +156,7 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
       data.addColumn(colName, null, column?.defaultValue ?? null);
     });
 
-    data.reorderColumns(headers);
+    data.reorderColumns(headers.filter(h => !ignoredSources.includes(h)));
 
     const colCache = new Map<string|number, ColumnSpec|null>();
     for (const sourceRow of data) {
