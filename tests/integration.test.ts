@@ -631,4 +631,132 @@ describe('CsvMapper Integration Tests', () => {
       }
     });
   });
+
+  describe('allowUnmappedTargets edge cases', () => {
+    test('should not duplicate column when spec name matches unmapped source header', () => {
+      // Bug: when allowUnmappedTargets is true and a source header matches a
+      // column spec name, the pass-through column should not be duplicated.
+      const columns: ColumnSpec[] = [
+        { name: 'key', title: 'Key' },
+        { name: 'mapped_col', title: 'Mapped' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false,
+        output: { allowUnmappedTargets: true }
+      });
+
+      csvMapper.setCsv('key,other,mapped_col\nvalue1,value2,value3');
+
+      // Map at least one column to avoid handleEmptyMapping short-circuit
+      csvMapper.addColumnMapping('mapped_col', 'mapped_col');
+
+      // key is NOT mapped — it passes through because allowUnmappedTargets=true
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        const headers = mappedCsv.data?.headers;
+        expect(headers).toBeDefined();
+        // 'key' should appear exactly once (not duplicated)
+        const keyCount = headers?.filter(h => h === 'key').length ?? 0;
+        expect(keyCount).toBe(1);
+        // Pass-through column 'other' should be preserved
+        expect(headers).toContain('other');
+        // Data should be preserved for the pass-through column
+        expect(mappedCsv.data?.row(0).get('key')).toBe('value1');
+      }
+    });
+
+    test('should not duplicate column when spec name matches source header and auto-mapped', () => {
+      // Bug: auto-map produces key → key, which is a no-op rename.
+      // The column should appear exactly once.
+      const columns: ColumnSpec[] = [
+        { name: 'key', title: 'Key' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false,
+        output: { allowUnmappedTargets: true }
+      });
+
+      const csv = 'key,other\nvalue1,value2';
+      // mapCsv calls autoMap which creates key→key mapping
+      const mappedCsv = csvMapper.mapCsv(csv);
+
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        const headers = mappedCsv.data?.headers;
+        expect(headers).toBeDefined();
+        // 'key' should appear exactly once
+        const keyCount = headers?.filter(h => h === 'key').length ?? 0;
+        expect(keyCount).toBe(1);
+        // Data should be preserved
+        expect(mappedCsv.data?.row(0).get('key')).toBe('value1');
+      }
+    });
+
+    test('should not duplicate columns when multiple specs match unmapped source headers', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'id', title: 'ID' },
+        { name: 'name', title: 'Name' },
+        { name: 'mapped_col', title: 'Mapped' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false,
+        output: { allowUnmappedTargets: true }
+      });
+
+      csvMapper.setCsv('id,name,extra,mapped_col\n1,John,stuff,val');
+
+      // Map one column to avoid handleEmptyMapping
+      csvMapper.addColumnMapping('mapped_col', 'mapped_col');
+
+      // id and name pass through (unmapped, but match spec names)
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        const headers = mappedCsv.data?.headers;
+        expect(headers).toBeDefined();
+        expect(headers?.filter(h => h === 'id').length).toBe(1);
+        expect(headers?.filter(h => h === 'name').length).toBe(1);
+        expect(headers).toContain('extra');
+        expect(mappedCsv.data?.row(0).get('id')).toBe('1');
+        expect(mappedCsv.data?.row(0).get('name')).toBe('John');
+      }
+    });
+
+    test('should still add missing columns that are not in source headers', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'id', title: 'ID' },
+        { name: 'missing_col', title: 'Missing', defaultValue: 'N/A' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false,
+        output: { allowUnmappedTargets: true }
+      });
+
+      csvMapper.setCsv('id,name\n1,John');
+
+      csvMapper.setMapping({
+        'id': 'id'
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        const headers = mappedCsv.data?.headers;
+        expect(headers).toBeDefined();
+        expect(headers?.filter(h => h === 'id').length).toBe(1);
+        expect(headers).toContain('missing_col');
+        // The missing_col should have the default value
+        expect(mappedCsv.data?.row(0).get('missing_col')).toBe('N/A');
+      }
+    });
+  });
 });

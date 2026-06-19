@@ -951,7 +951,10 @@
             }
             const missingColumns = columnSpecs.filter(spec => {
                 const sourceHeaders = inverseMapping[spec.name] || [];
-                return sourceHeaders.length === 0;
+                if (sourceHeaders.length > 0)
+                    return false;
+                const colName = spec.outputHeader ?? spec.name ?? spec.title;
+                return !data.headers?.includes(colName);
             }).map(a => a.outputHeader ?? a.name);
             missingColumns.forEach(colName => {
                 const column = columnSpecs.find(spec => (spec.outputHeader ?? spec.name ?? spec.title) === colName);
