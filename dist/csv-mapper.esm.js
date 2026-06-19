@@ -2612,6 +2612,12 @@ class CsvMapper extends EventTarget {
                         this._addMapping(source, target);
                     }
                 }
+                // When the user chose --IGNORE-- for every CSV header (sources are all
+                // empty strings), explicitly record the unmapping so the transformer
+                // knows to drop this column rather than passing it through.
+                if (sources.length > 0 && sources.every(s => !s)) {
+                    this.mapping[target] = '';
+                }
             }
             else {
                 if (Array.isArray(targetColumns)) {
