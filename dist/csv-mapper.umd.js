@@ -954,6 +954,8 @@
                 if (sourceHeaders.length > 0)
                     return false;
                 const colName = spec.outputHeader ?? spec.name ?? spec.title;
+                if (ignoredSources.includes(colName))
+                    return false; // ← add this
                 return !data.headers?.includes(colName);
             }).map(a => a.outputHeader ?? a.name);
             missingColumns.forEach(colName => {

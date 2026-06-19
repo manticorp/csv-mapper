@@ -144,10 +144,11 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
     }
 
     const missingColumns = columnSpecs.filter(spec => {
-      const sourceHeaders = inverseMapping[spec.name] || [];
-      if (sourceHeaders.length > 0) return false;
-      const colName = spec.outputHeader ?? spec.name ?? spec.title;
-      return !data.headers?.includes(colName);
+        const sourceHeaders = inverseMapping[spec.name] || [];
+        if (sourceHeaders.length > 0) return false;
+        const colName = spec.outputHeader ?? spec.name ?? spec.title;
+        if (ignoredSources.includes(colName)) return false;  // ← add this
+        return !data.headers?.includes(colName);
     }).map(a => a.outputHeader ?? a.name);
 
     missingColumns.forEach(colName => {
