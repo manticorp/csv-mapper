@@ -204,16 +204,10 @@ export default class CsvMapper extends EventTarget {
     if (map) {
       Object.entries(map).forEach(([csvHeader, target]) => {
         if (typeof target === 'string') {
-          // Legacy format: string values
-          if (target) {
-            this._addMapping(csvHeader, target);
-          }
+          this._addMapping(csvHeader, target);
         } else {
-          // New format: array values
           target.forEach(configColumn => {
-            if (configColumn) {
-              this._addMapping(csvHeader, configColumn);
-            }
+            this._addMapping(csvHeader, configColumn);
           });
         }
       });
@@ -478,7 +472,9 @@ export default class CsvMapper extends EventTarget {
           }
         }
         for (const source of sources) {
-          this._addMapping(source, target);
+          if (source) {
+            this._addMapping(source, target);
+          }
         }
       } else {
         if (Array.isArray(targetColumns)) {

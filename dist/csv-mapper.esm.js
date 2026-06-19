@@ -914,10 +914,31 @@ class DefaultDataTransformer extends EventTarget {
     transformRows(inputCsv, mapping, columnSpecs) {
         let rowIndex = 0;
         const errors = [];
-        const inverseMapping = invertMapping(mapping);
+        // Strip empty-source and empty-target mappings (from --IGNORE-- selections)
+        // and collect the source columns that should be dropped regardless of
+        // allowUnmappedTargets.
+        const ignoredSources = [];
+        const cleanMapping = {};
+        for (const [source, target] of Object.entries(mapping)) {
+            if (!source)
+                continue;
+            const targets = Array.isArray(target) ? target : [target];
+            const validTargets = targets.filter(t => t !== '');
+            if (validTargets.length > 0) {
+                cleanMapping[source] = validTargets.length === 1 ? validTargets[0] : validTargets;
+            }
+            else {
+                ignoredSources.push(source);
+            }
+        }
+        const inverseMapping = invertMapping(cleanMapping);
         let data = inputCsv.clone();
-        data.remapColumns(mapping);
+        data.remapColumns(cleanMapping);
         const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
+        // Explicitly ignored columns are always dropped
+        for (const source of ignoredSources) {
+            data.removeColumn(source);
+        }
         if (data.headers && !this.options.allowUnmappedTargets) {
             const toRemove = data.headers?.filter(header => !inverseMapping[header]);
             toRemove.forEach(col => data.removeColumn(col));
@@ -2354,17 +2375,11 @@ class CsvMapper extends EventTarget {
         if (map) {
             Object.entries(map).forEach(([csvHeader, target]) => {
                 if (typeof target === 'string') {
-                    // Legacy format: string values
-                    if (target) {
-                        this._addMapping(csvHeader, target);
-                    }
+                    this._addMapping(csvHeader, target);
                 }
                 else {
-                    // New format: array values
                     target.forEach(configColumn => {
-                        if (configColumn) {
-                            this._addMapping(csvHeader, configColumn);
-                        }
+                        this._addMapping(csvHeader, configColumn);
                     });
                 }
             });
@@ -2588,7 +2603,9 @@ class CsvMapper extends EventTarget {
                     }
                 }
                 for (const source of sources) {
-                    this._addMapping(source, target);
+                    if (source) {
+                        this._addMapping(source, target);
+                    }
                 }
             }
             else {

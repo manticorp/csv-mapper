@@ -460,4 +460,175 @@ describe('CsvMapper Integration Tests', () => {
       }
     });
   });
+
+  describe('--IGNORE-- handling', () => {
+    test('Bug 1: ignored columns should be excluded from output', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'name', title: 'Name' },
+        { name: 'email', title: 'Email' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false
+      });
+
+      csvMapper.setCsv('Name,Email,Ignored\nJohn,john@test.com,extra');
+
+      // Simulate mapping a column to empty string (what --IGNORE-- does)
+      csvMapper.addColumnMapping('Name', 'name');
+      csvMapper.addColumnMapping('Email', 'email');
+      csvMapper.setMapping({
+        'Name': 'name',
+        'Email': 'email',
+        'Ignored': ''  // explicitly ignored
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        expect(mappedCsv.csv).toBe('name,email\r\nJohn,john@test.com');
+      }
+    });
+
+    test('Bug 1: ignored columns excluded even with allowUnmappedTargets: true', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'name', title: 'Name' },
+        { name: 'email', title: 'Email' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false,
+        output: {
+          allowUnmappedTargets: true
+        }
+      });
+
+      csvMapper.setCsv('Name,Email,Ignored,Other\nJohn,john@test.com,extra,more');
+
+      csvMapper.setMapping({
+        'Name': 'name',
+        'Email': 'email',
+        'Ignored': ''  // explicitly ignored
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        // Ignored column should be dropped, but unmapped 'Other' should be kept
+        expect(mappedCsv.csv).toBe('name,email,Other\r\nJohn,john@test.com,more');
+      }
+    });
+
+    test('Bug 2: ignoring a column present in columns config should not crash', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'key', title: 'Key' },
+        { name: 'value', title: 'Value' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false
+      });
+
+      csvMapper.setCsv('key,extra\nabc,def');
+
+      // Map 'key' to 'key' and ignore 'extra'
+      csvMapper.setMapping({
+        'key': 'key',
+        'extra': ''  // explicitly ignored
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        // 'key' is mapped, 'value' gets default (empty), 'extra' is dropped
+        expect(mappedCsv.csv).toBe('key,value\r\nabc,');
+      }
+    });
+
+    test('configToCsv mode: ignoring a config column should not crash', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'key', title: 'Key' },
+        { name: 'value', title: 'Value', defaultValue: 'N/A' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        mappingMode: 'configToCsv',
+        showUserControls: false
+      });
+
+      csvMapper.setCsv('key,extra\nabc,def');
+
+      // Simulate: CSV header 'key' maps to config 'key', CSV header '' maps to nothing
+      // (in configToCsv mode, empty-string source means "ignore this config column")
+      // The defense-in-depth filter in transformRows strips empty-source mappings
+      csvMapper.setMapping({
+        'key': 'key',
+        '': 'value'  // This simulates ignoring config column 'value'
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        // 'key' mapped from CSV, 'value' gets default 'N/A'
+        expect(mappedCsv.csv).toBe('key,value\r\nabc,N/A');
+      }
+    });
+
+    test('multiple sources to same target with one ignored should still work', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'name', title: 'Name' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false
+      });
+
+      csvMapper.setCsv('First,Last,Ignored\nJohn,Doe,extra');
+
+      csvMapper.setMapping({
+        'First': 'name',
+        'Last': 'name',
+        'Ignored': ''
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        // First and Last both map to name. Ignored is dropped.
+        expect(mappedCsv.data?.headers).toContain('name');
+        expect(mappedCsv.data?.headers).not.toContain('Ignored');
+      }
+    });
+
+    test('all columns ignored should produce empty CSV with columns config headers', () => {
+      const columns: ColumnSpec[] = [
+        { name: 'target1', title: 'Target 1', defaultValue: 'default' },
+        { name: 'target2', title: 'Target 2', defaultValue: 'N/A' }
+      ];
+
+      csvMapper = new CsvMapper(fileInput, {
+        columns,
+        showUserControls: false
+      });
+
+      csvMapper.setCsv('Source1,Source2\nval1,val2');
+
+      csvMapper.setMapping({
+        'Source1': '',
+        'Source2': ''
+      });
+
+      const mappedCsv = csvMapper.getMappedResult();
+      expect(mappedCsv).toBeDefined();
+      if (mappedCsv) {
+        // Both sources ignored, output has defaults
+        expect(mappedCsv.csv).toBe('target1,target2\r\ndefault,N/A');
+      }
+    });
+  });
 });

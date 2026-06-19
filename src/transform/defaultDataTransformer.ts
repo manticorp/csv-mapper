@@ -111,10 +111,32 @@ export class DefaultDataTransformer extends EventTarget implements DataTransform
   ): {data: Csv, errors: ValidationError[]} {
     let rowIndex = 0;
     const errors: ValidationError[] = [];
-    const inverseMapping = invertMapping(mapping);
+
+    // Strip empty-source and empty-target mappings (from --IGNORE-- selections)
+    // and collect the source columns that should be dropped regardless of
+    // allowUnmappedTargets.
+    const ignoredSources: string[] = [];
+    const cleanMapping: CsvMapping = {};
+    for (const [source, target] of Object.entries(mapping)) {
+      if (!source) continue;
+      const targets = Array.isArray(target) ? target : [target];
+      const validTargets = targets.filter(t => t !== '');
+      if (validTargets.length > 0) {
+        cleanMapping[source] = validTargets.length === 1 ? validTargets[0] : validTargets;
+      } else {
+        ignoredSources.push(source);
+      }
+    }
+
+    const inverseMapping = invertMapping(cleanMapping);
     let data = inputCsv.clone();
-    data.remapColumns(mapping);
+    data.remapColumns(cleanMapping);
     const headers = columnSpecs.map(spec => spec.outputHeader ?? spec.name ?? spec.title);
+
+    // Explicitly ignored columns are always dropped
+    for (const source of ignoredSources) {
+      data.removeColumn(source);
+    }
 
     if (data.headers && !this.options.allowUnmappedTargets) {
       const toRemove = data.headers?.filter(header => !inverseMapping[header]);
