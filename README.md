@@ -1,6 +1,6 @@
 # CSV Mapper
 
-[![npm version](https://badge.fury.io/js/@manticorp/csv-mapper.svg)](https://badge.fury.io/js/@manticorp/csv-mapper)
+[![npm version](https://badge.fury.io/js/@manticorp%2Fcsv-mapper.svg?icon=si%3Anpm)](https://badge.fury.io/js/@manticorp%2Fcsv-mapper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Do you need to accept CSV files from users? Then this library is for you!
